@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HSR Tools</title>
+  <meta name="description" content="Tools for Honkai: Star Rail. Action value calculator with speed, light cones, relics and eidolons.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">✦</span>
+      <span class="brand-name">HSR Tools</span>
+    </div>
+    <nav class="tabs" id="tool-tabs" aria-label="Tools"></nav>
+  </header>
+
+  <main id="tool-root"></main>
+
+  <footer class="site-footer">
+    Fan-made. Game data from <a href="https://github.com/Mar-7th/StarRailRes" target="_blank" rel="noopener">Mar-7th/StarRailRes</a>.
+    Honkai: Star Rail and its assets belong to HoYoverse.
+  </footer>
+
+  <div class="modal" id="modal" hidden></div>
+  <div class="tooltip" id="tooltip" hidden></div>
+
+  <script src="data/hsr-data.js"></script>
+  <script src="js/app.js"></script>
+  <script src="tools/av-calculator/engine.js"></script>
+  <script src="tools/av-calculator/effects.js"></script>
+  <script src="tools/av-calculator/calc.js"></script>
+  <script src="tools/av-calculator/ui.js"></script>
+  <script>HSRTools.start();</script>
+</body>
+</html>
