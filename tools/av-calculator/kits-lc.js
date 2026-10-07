@@ -596,4 +596,140 @@
   };
 
   window.AVLightConeKits = lc;
+
+  // ---------------------------------------------------------------- relic sets and planars
+  // Conditional effects of each set (unconditional stats come from the data's props).
+  const COMPANIONS = new Set(['8002', '8004', '8006', '8008', '8010', '1003', '1510', '1001', '1224', '1413', '1002', '1213', '1414', '1004', '1313']);
+  const allyTargetOf = (sim, a, kind) => { const k = sim.kitOf(a); return k && k.allyTarget && k.allyTarget[kind] ? sim.targetOf(a) : null; };
+  const relic = {
+    101: { four: { desc: 'Battle start: +1 SP.', battleStart(sim, u) { sim.gainSP(1, u); } } },
+    102: { four: { desc: 'Basic ATK +10% DMG.', battleStart(sim, u) { self(sim, u, 'r102', { dmg_Basic: 0.1 }, Infinity); } } },
+    104: { four: { desc: 'Ultimate: +25% CRIT DMG for 2 turns.', ult(sim, u) { self(sim, u, 'r104', { cd: 0.25 }, 2); } } },
+    105: { four: { desc: 'Attacking or being hit: +5% ATK (5 stacks).', action(sim, u, t) { if (isAtk(t)) self(sim, u, 'r105', { atkPct: 0.05 }, Infinity, { maxStacks: 5 }); }, hit(sim, u) { self(sim, u, 'r105', { atkPct: 0.05 }, Infinity, { maxStacks: 5 }); } } },
+    106: { four: { desc: 'Turn start at ≤50% HP (half the turns): +5 Energy.', turnStart(sim, u) { u.state.r106 = !u.state.r106; if (u.state.r106) G(sim, u, 5 * 2 * HALF); } } },
+    107: { four: { desc: 'Skill +12% DMG; after Ultimate the next attack +12% Fire DMG.', battleStart(sim, u) { self(sim, u, 'r107', { dmg_Skill: 0.12 }, Infinity); }, ult(sim, u) { u.state.r107 = true; }, action(sim, u, t) { if (u.state.r107 && isAtk(t)) { u.state.r107 = false; if (u.cfg.char.element === 'Fire') self(sim, u, 'r107b', { dmg: 0.12 }, Infinity); } }, afterDamage(sim, u) { sim.removeBuff(u, 'r107b'); } } },
+    108: { four: { desc: 'Ignores 10% DEF (20% vs Quantum-weak enemies, assumed for Quantum wearers).', battleStart(sim, u) { self(sim, u, 'r108', { defIgnore: u.cfg.char.element === 'Quantum' ? 0.2 : 0.1 }, Infinity); } } },
+    109: { four: { desc: 'Skill: +20% ATK for 1 turn.', action(sim, u, t) { if (t === 'Skill') self(sim, u, 'r109', { atkPct: 0.2 }, 1); } } },
+    111: { four: { desc: 'Breaking a Weakness: +3 Energy.', weaknessBreak(sim, u, by) { if (by === u) G(sim, u, 3); } } },
+    112: { four: { desc: '+10% CRIT Rate vs debuffed enemies (Imprison isn\'t simulated).', battleStart(sim, u) { self(sim, u, 'r112', { cr: (s) => (s.debuffCount() > 0 ? 0.1 : 0) }, Infinity); } } },
+    113: { four: { desc: 'Hit or spending HP: +8% CRIT Rate for 2 turns (2 stacks).', hit(sim, u) { self(sim, u, 'r113', { cr: 0.08 }, 2, { maxStacks: 2 }); }, action(sim, u, t) { if (HP_USERS.has(u.cfg.char.id) && (t === 'Skill' || t === 'Enhanced')) self(sim, u, 'r113', { cr: 0.08 }, 2, { maxStacks: 2 }); } } },
+    115: {
+      two: { desc: 'Follow-up +20% DMG.', battleStart(sim, u) { self(sim, u, 'r115', { dmg_FUA: 0.2 }, Infinity); } },
+      four: { desc: 'Each follow-up: +6% ATK per hit (8 stacks, 3 turns), reset by the next follow-up.', followUpDone(sim, u) { sim.removeBuff(u, 'r115b'); self(sim, u, 'r115b', { atkPct: 0.06 * Math.min(8, 2 * sim.targetsHit(u, 'FollowUp')) }, 3); } },
+    },
+    116: { four: { desc: 'Ignores 6% DEF per DoT on the target (3).', battleStart(sim, u) { self(sim, u, 'r116', { defIgnore: (s) => 0.06 * Math.min(3, (s.dots || []).length) }, Infinity); } } },
+    117: {
+      two: { desc: '+12% DMG vs debuffed enemies.', battleStart(sim, u) { self(sim, u, 'r117', { dmg: (s) => (s.debuffCount() > 0 ? 0.12 : 0) }, Infinity); } },
+      four: {
+        desc: '+8% / 12% CRIT DMG vs enemies with 2 / 3+ debuffs; doubled for 1 turn after she inflicts a debuff (her Skill / Ultimate).',
+        battleStart(sim, u) { self(sim, u, 'r117b', { cd: (s, a) => { const d = s.debuffCount(); return (d >= 3 ? 0.12 : d >= 2 ? 0.08 : 0) * (s.hasBuff(a, 'r117x') ? 2 : 1); }, cr: (s, a) => (s.hasBuff(a, 'r117x') ? 0.04 : 0) }, Infinity); },
+        action(sim, u, t) { if (t === 'Skill') self(sim, u, 'r117x', {}, 1); },
+        ult(sim, u) { self(sim, u, 'r117x', {}, 1); },
+      },
+    },
+    118: { four: { desc: 'Ultimate on an ally: all allies +30% Break Effect for 2 turns.', ult(sim, u) { if (allyTargetOf(sim, u, 'Ultimate')) team(sim, 'r118', { be: 0.3 }, 2); } } },
+    119: { four: { desc: 'At 150% Break Effect, Break DMG ignores 10% DEF; at 250%, 15% more (Super Break).', battleStart(sim, u) { const be = st(sim, u).be || 0; if (be >= 1.5) self(sim, u, 'r119', { defIgnore_Break: 0.1 + (be >= 2.5 ? 0.15 : 0) }, Infinity); } } },
+    120: { four: { desc: 'After a follow-up: Ultimate +36% DMG for 1 turn.', followUpDone(sim, u) { self(sim, u, 'r120', { dmg_Ult: 0.36 }, 1); } } },
+    121: {
+      four: {
+        desc: 'Skill / Ultimate on an ally: their CRIT DMG +18% for 2 turns (2 stacks).',
+        give(sim, u, kind) { const tg = allyTargetOf(sim, u, kind); if (tg && tg !== u) sim.addBuff(tg, { id: 'r121', stats: { cd: 0.18 }, turns: 2, maxStacks: 2 }); },
+        action(sim, u, t) { if (t === 'Skill') this.give(sim, u, 'Skill'); },
+        ult(sim, u) { this.give(sim, u, 'Ultimate'); },
+      },
+    },
+    122: { four: { desc: 'Skill and Ultimate +20% DMG; after Ultimate the next Skill +25%.', battleStart(sim, u) { self(sim, u, 'r122', { dmg_Skill: 0.2, dmg_Ult: 0.2 }, Infinity); }, ult(sim, u) { self(sim, u, 'r122b', { dmg_Skill: 0.25 }, Infinity); }, afterDamage(sim, u, act) { if (act === 'Skill') sim.removeBuff(u, 'r122b'); } } },
+    123: { four: { desc: 'Memosprite attacks: she and it +30% CRIT DMG for 2 turns.', allyAttack(sim, u, a) { if (a.owner === u && a.memo) self(sim, u, 'r123', { cd: 0.3 }, 2); } } },
+    124: { four: { desc: 'SPD below 110 / 95 at battle start: +20% / 32% CRIT Rate (memosprite too).', battleStart(sim, u) { const sp = sim.spd(u); if (sp < 110) self(sim, u, 'r124', { cr: sp < 95 ? 0.32 : 0.2 }, Infinity); } } },
+    125: { four: { desc: 'Healing allies (healer\'s actions): Gentle Rain for 2 turns, all allies +15% CRIT DMG.', action(sim, u) { if (u.cfg.char.path === 'Abundance') team(sim, 'gentleRain', { cd: 0.15 }, 2, { tick: 'owner', owner: u }); } } },
+    126: {
+      four: {
+        desc: 'Targeted by an ally\'s ability: Help (2 stacks); Ultimate at 2 stacks: +48% ATK for 1 turn.',
+        allyAction(sim, u, a, t) { if (a.kind === 'char' && allyTargetOf(sim, a, t) === u) u.state.r126 = Math.min(2, (u.state.r126 || 0) + 1); },
+        allyUlt(sim, u, a) { if (allyTargetOf(sim, a, 'Ultimate') === u) u.state.r126 = Math.min(2, (u.state.r126 || 0) + 1); },
+        ult(sim, u) { if (u.state.r126 >= 2) { u.state.r126 = 0; self(sim, u, 'r126', { atkPct: 0.48 }, 1); } },
+      },
+    },
+    127: { four: { desc: 'Basic ATK / Skill with her memosprite out: +24% Max HP for her and it, all allies +15% DMG (until her next Basic ATK / Skill).', action(sim, u, t) { if ((t === 'Basic' || t === 'Skill' || t === 'Enhanced') && sim.units.some((x) => x.alive && x.owner === u && x.memo)) { self(sim, u, 'r127', { hpPct: 0.24 }, Infinity); team(sim, 'r127t', { dmg: 0.15 }, Infinity); } } } },
+    128: { four: { desc: 'Allies holding her Shield: +15% CRIT DMG.', battleStart(sim, u) { if (u.cfg.char.path === 'Preservation') team(sim, 'r128', { cd: 0.15 }, Infinity); } } },
+    129: {
+      four: {
+        desc: 'Her (and her memosprite\'s) Elation DMG ignores 10% DEF, +1% per 5 Punchline allies gain (10).',
+        battleStart(sim, u) { u.state.r129 = 0; self(sim, u, 'r129', { defIgnore_Elation: (s, a) => 0.1 + 0.01 * Math.min(10, Math.floor(a.state.r129 / 5)) }, Infinity); },
+        punchline(sim, u, by, k) { u.state.r129 += k; },
+      },
+    },
+    130: { four: { desc: 'SPD 120 / 160 at battle start: +10% / 18% CRIT Rate. First Elation Skill: all allies +10% Elation.', battleStart(sim, u) { const sp = sim.spd(u); if (sp >= 120) self(sim, u, 'r130', { cr: sp >= 160 ? 0.18 : 0.1 }, Infinity); }, elation(sim, u) { if (!u.state.r130) { u.state.r130 = true; team(sim, 'r130e', { elation: 0.1 }, Infinity); } } } },
+    131: {
+      four: {
+        desc: 'Battle start and each Skill: Skill and Ultimate +18% DMG (3 stacks); one stack fades at her turn start and after her Ultimate.',
+        add(sim, u) { self(sim, u, 'r131', { dmg_Skill: 0.18, dmg_Ult: 0.18 }, Infinity, { maxStacks: 3 }); },
+        drop(sim, u) { const b = u.buffs.find((x) => x.id === 'r131'); if (b) { if (b.stacks > 1) b.stacks -= 1; else sim.removeBuff(u, 'r131'); } },
+        battleStart(sim, u) { this.add(sim, u); },
+        action(sim, u, t) { if (t === 'Skill') this.add(sim, u); },
+        turnStart(sim, u) { this.drop(sim, u); },
+        afterDamage(sim, u, act) { if (act === 'Ult') this.drop(sim, u); },
+      },
+    },
+    132: {
+      four: {
+        desc: '+28% CRIT DMG vs DEF-reduced enemies. After she attacks with a DEF reduction up: Comburent, all allies +15% DMG for 2 turns.',
+        battleStart(sim, u) { self(sim, u, 'r132', { cd: (s) => ((s.enemyMods || []).some((m) => m.def > 0) ? 0.28 : 0) }, Infinity); },
+        afterDamage(sim, u, act) { if (isAtk(act) && (sim.enemyMods || []).some((m) => m.def > 0)) team(sim, 'comburent', { dmg: 0.15 }, 2); },
+      },
+    },
+    133: {
+      four: {
+        desc: 'Skill / Ultimate on another ally: their Elation +16% for 3 turns; with 10+ Certified Banger also all allies +12% CRIT DMG for 3 turns.',
+        give(sim, u, kind) { const tg = allyTargetOf(sim, u, kind); if (!tg || tg === u) return; sim.addBuff(tg, { id: 'r133', stats: { elation: 0.16 }, turns: 3 }); if (sim.cbTotal(u) >= 10) team(sim, 'r133cd', { cd: 0.12 }, 3); },
+        action(sim, u, t) { if (t === 'Skill') this.give(sim, u, 'Skill'); },
+        ult(sim, u) { this.give(sim, u, 'Ultimate'); },
+      },
+    },
+    134: { four: { desc: 'Basic ATK +36% DMG; Basic ATK gives +20% ATK for 2 turns.', battleStart(sim, u) { self(sim, u, 'r134', { dmg_Basic: 0.36 }, Infinity); }, action(sim, u, t) { if (t === 'Basic' || t === 'Enhanced') self(sim, u, 'r134b', { atkPct: 0.2 }, 2); } } },
+    // Planar ornaments
+    301: { two: { desc: 'At 120+ SPD: +12% ATK more.', battleStart(sim, u) { self(sim, u, 'r301', { atkPct: (s, a) => (s.spd(a) >= 120 ? 0.12 : 0) }, Infinity); } } },
+    302: { two: { desc: 'At 120+ SPD: all allies +8% ATK.', battleStart(sim, u) { team(sim, 'r302', { atkPct: (s) => (s.spd(u) >= 120 ? 0.08 : 0) }, Infinity); } } },
+    303: { two: { desc: '+ATK equal to 25% of Effect Hit Rate (max 25%).', battleStart(sim, u) { self(sim, u, 'r303', { atkPct: Math.min(0.25, 0.25 * (st(sim, u).ehr || 0)) }, Infinity); } } },
+    305: { two: { desc: 'At 120% CRIT DMG: +60% CRIT Rate until her first attack ends.', battleStart(sim, u) { if ((st(sim, u).cd || 0) >= 1.2) self(sim, u, 'r305', { cr: 0.6 }, Infinity); }, afterDamage(sim, u, act) { if (isAtk(act)) sim.removeBuff(u, 'r305'); } } },
+    306: { two: { desc: 'At 50% CRIT Rate: Ultimate and Follow-up +15% DMG.', battleStart(sim, u) { if ((st(sim, u).cr || 0) >= 0.5) self(sim, u, 'r306', { dmg_Ult: 0.15, dmg_FUA: 0.15 }, Infinity); } } },
+    307: { two: { desc: 'At 145+ SPD: +20% Break Effect.', battleStart(sim, u) { self(sim, u, 'r307', { be: (s, a) => (s.spd(a) >= 145 ? 0.2 : 0) }, Infinity); } } },
+    309: { two: { desc: 'At 70% CRIT Rate: Basic ATK and Skill +20% DMG.', battleStart(sim, u) { if ((st(sim, u).cr || 0) >= 0.7) self(sim, u, 'r309', { dmg_Basic: 0.2, dmg_Skill: 0.2 }, Infinity); } } },
+    310: { two: { desc: 'At 30% Effect RES: all allies +10% CRIT DMG.', battleStart(sim, u) { if (((u.stats0 && u.stats0.res) || 0) >= 0.3) team(sim, 'r310', { cd: 0.1 }, Infinity); } } },
+    311: { two: { desc: 'At 135 / 160 SPD: +12% / 18% DMG.', battleStart(sim, u) { self(sim, u, 'r311', { dmg: (s, a) => { const sp = s.spd(a); return sp >= 160 ? 0.18 : sp >= 135 ? 0.12 : 0; } }, Infinity); } } },
+    312: { two: { desc: 'Other allies of her Type +10% DMG.', battleStart(sim, u) { sim.allies(u).filter((a) => a.cfg.char.element === u.cfg.char.element).forEach((a) => sim.addBuff(a, { id: 'r312', stats: { dmg: 0.1 }, turns: Infinity })); } } },
+    313: { two: { desc: 'On-kill CRIT DMG (kills aren\'t simulated).' } },
+    314: { two: { desc: 'A teammate on the same Path: +12% CRIT Rate.', battleStart(sim, u) { if (sim.allies(u).some((a) => a.cfg.char.path === u.cfg.char.path)) self(sim, u, 'r314', { cr: 0.12 }, Infinity); } } },
+    315: {
+      two: {
+        desc: 'Ally follow-ups: Merit (5 stacks), her Follow-up +5% DMG each; at 5, +25% CRIT DMG.',
+        merit(sim, u) { const b = self(sim, u, 'merit315', { dmg_FUA: 0.05 }, Infinity, { maxStacks: 5 }); if (b && b.stacks >= 5) self(sim, u, 'merit315cd', { cd: 0.25 }, Infinity); },
+        allyAttack(sim, u, a, t) { if (t === 'FollowUp' && a.kind === 'char') this.merit(sim, u); },
+        followUpDone(sim, u) { this.merit(sim, u); },
+      },
+    },
+    316: { two: { desc: 'Hitting a Fire-weak enemy (assumed): +40% Break Effect for 1 turn.', action(sim, u, t) { if (isAtk(t)) self(sim, u, 'r316', { be: 0.4 }, 1); } } },
+    317: { two: { desc: 'Not first in the lineup: the first character +12% ATK.', battleStart(sim, u) { const first = sim.chars()[0]; if (first && first !== u) sim.addBuff(first, { id: 'r317', stats: { atkPct: 0.12 }, turns: Infinity }); } } },
+    318: { two: { desc: 'With her summon out: +32% CRIT DMG.', battleStart(sim, u) { self(sim, u, 'r318', { cd: (s, a) => (s.units.some((x) => x.alive && x.owner === a && x.kind === 'summon') ? 0.32 : 0) }, Infinity); } } },
+    319: { two: { desc: 'At 5000+ Max HP: she and her memosprite +28% CRIT DMG.', battleStart(sim, u) { if (st(sim, u).HP >= 5000) self(sim, u, 'r319', { cd: 0.28 }, Infinity); } } },
+    320: { two: { desc: 'Outgoing Healing only (not simulated).' } },
+    321: {
+      two: {
+        desc: 'Ally targets on the field other than 4: +9% DMG per extra (4) / +12% per missing (3), for her and her memosprite.',
+        battleStart(sim, u) { self(sim, u, 'r321', { dmg: (s) => { const k = s.chars().length + s.units.filter((x) => x.alive && x.kind === 'summon' && x.memo).length; return k > 4 ? 0.09 * Math.min(4, k - 4) : 0.12 * Math.min(3, 4 - k); } }, Infinity); },
+      },
+    },
+    322: { two: { desc: 'At 2400 / 3600 ATK: +12% / 24% DoT DMG.', battleStart(sim, u) { const atk = st(sim, u).ATK; if (atk >= 2400) self(sim, u, 'r322', { dotDmg: atk >= 3600 ? 0.24 : 0.12 }, Infinity); } } },
+    324: {
+      two: {
+        desc: '3+ SP spent in one turn: +32% CRIT DMG for 3 turns.',
+        spUsed(sim, u, by, k) { if (u.state.r324Turn !== sim.turnId) { u.state.r324Turn = sim.turnId; u.state.r324 = 0; } u.state.r324 += k; if (u.state.r324 >= 3) self(sim, u, 'r324', { cd: 0.32 }, 3); },
+      },
+    },
+    325: { two: { desc: 'Elation 40% / 80%: +20% / 32% CRIT DMG.', battleStart(sim, u) { const e = st(sim, u).elation || 0; if (e >= 0.4) self(sim, u, 'r325', { cd: e >= 0.8 ? 0.32 : 0.2 }, Infinity); } } },
+    326: { two: { desc: 'Her follow-ups: +24% ATK for 2 turns (on-kill CRIT DMG isn\'t simulated).', followUpDone(sim, u) { self(sim, u, 'r326', { atkPct: 0.24 }, 2); } } },
+    327: { two: { desc: 'She and a teammate are both Trailblaze Companions: +32% CRIT DMG.', battleStart(sim, u) { if (COMPANIONS.has(u.cfg.char.id) && sim.allies(u).some((a) => COMPANIONS.has(a.cfg.char.id))) self(sim, u, 'r327', { cd: 0.32 }, Infinity); } } },
+    328: { two: { desc: 'Max Energy 200+: +0.2% DMG per point above (max 32%).', battleStart(sim, u) { if (u.maxEnergy >= 200) self(sim, u, 'r328', { dmg: Math.min(0.32, 0.002 * (u.maxEnergy - 200)) }, Infinity); } } },
+  };
+  window.AVRelicKits = relic;
 })();

@@ -47,6 +47,8 @@
     for (const [id, pcs] of sets) {
       const e = relics[id] && relics[id][pcs];
       if (e) out.push({ src: 'relic', label: `${RELICS[id].name} (${pcs === 'two' ? '2' : '4'}pc)`, ...e });
+      const ra = window.AVRelicKits && window.AVRelicKits[id] && window.AVRelicKits[id][pcs];
+      if (ra) out.push({ src: 'relicaudit', label: `${RELICS[id].name} (${pcs === 'two' ? '2' : '4'}pc)`, ...ra });
     }
     return out;
   }

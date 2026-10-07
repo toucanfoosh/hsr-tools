@@ -721,7 +721,7 @@
       four: { desc: 'Ultimate: all allies +12% SPD for 1 turn (no stacking).', ult(sim, u) { sim.chars().forEach((a) => sim.addBuff(a, { id: 'messenger', pct: 0.12, turns: 1 })); } },
     },
     121: { two: { desc: '+6% SPD.', static: () => ({ pct: 0.06 }) } },
-    123: { four: { desc: '+6% SPD while memosprite is on field (assumed).', static: () => ({ pct: 0.06 }) } },
+    123: { four: { desc: '+6% SPD while her memosprite is out (Remembrance wearers).', static: (u) => ({ pct: u.cfg && u.cfg.char.path === 'Remembrance' ? 0.06 : 0 }) } },
     124: { four: { desc: '−8% SPD.', static: () => ({ pct: -0.08 }) } },
     125: {
       two: { desc: '+6% SPD.', static: () => ({ pct: 0.06 }) },
@@ -733,7 +733,7 @@
     308: { two: { desc: 'If SPD ≥ 120 on entering battle, advances action 40%.', battleStart(sim, u) { if (sim.spd(u) >= 120 - 1e-9) sim.advance(u, 0.4); } } },
     316: { two: { desc: '+6% SPD.', static: () => ({ pct: 0.06 }) } },
     320: { two: { desc: '+6% SPD.', static: () => ({ pct: 0.06 }) } },
-    323: { two: { desc: 'All allies +8% SPD while memosprite is on field (assumed, no stacking).', battleStart(sim) { sim.chars().forEach((a) => sim.addBuff(a, { id: 'amphoreus', pct: 0.08, turns: Infinity })); } } },
+    323: { two: { desc: 'All allies +8% SPD while her memosprite is out (Remembrance wearers; no stacking).', battleStart(sim, u) { if (u.cfg.char.path === 'Remembrance') sim.chars().forEach((a) => sim.addBuff(a, { id: 'amphoreus', pct: 0.08, turns: Infinity })); } } },
   };
 
   window.AVEffects = { kits, lightCones, relics, P };
