@@ -378,8 +378,10 @@
       },
       demiurgeAct(sim, u) {
         const tg = target(sim, u);
+        u.state.demiOde = false;
         if (!u.state.odeUsed && O(u, 'firstOde') && tg) {
           u.state.odeUsed = true;
+          u.state.demiOde = tg;
           // Being targeted counts as an ability on the ally (Phainon's Coreflame).
           sim.fire(tg, 'targetedBy', u, 'Ode');
           if (CHRYSOS.has(tg.cfg.char.id) || tg.cfg.char.id === '8008') sim.fire(tg, 'ode');

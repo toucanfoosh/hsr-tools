@@ -209,6 +209,8 @@ DMG_OVERRIDES = {
     ("1408", "Foundation: Stardeath Verdict"): [{"p": 1, "stat": "atk", "target": "random", "cnt": 16},
                                             {"p": 0, "stat": "atk", "target": "split"}],  # 4 Scourge × 4 hits + 450% split
     ("1410", "Sirenic Serenade"): [],                                          # applied per ally attack by the kit
+    ("1414", "A Dragon's Zenith Knows No Rue"): [{"p": 0, "stat": "atk", "target": "all"}],
+    ("1413", "Remembrance, Whirling, Like Rain"): [{"p": 0, "stat": "hp", "target": "main"}],  # + per 4 Memoria: kit
     ("1312", "G—Gonna Be Late!"): [{"p": 1, "stat": "atk", "target": "main"}],  # per hit; hit count in the kit                                     # Deep Learning buffs later attacks
 }
 

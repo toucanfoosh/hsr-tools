@@ -1610,7 +1610,7 @@
       },
       e2(sim, u) { if (E(u) < 2) return; u.state.e2 = Math.min(3, u.state.e2 + 1); sim.removeBuff(u, 'aglaeaE2'); self(sim, u, 'aglaeaE2', { defIgnore: 0.14 * u.state.e2 }, Infinity); },
       action(sim, u) { this.e2(sim, u); },
-      afterDamage(sim, u, act) { if (isAtk(act)) this.stitch(sim, u); },
+      afterDamage(sim, u, act) { if (isAtk(act)) { this.stitch(sim, u); if (u.state.romance) { u.state.romance = false; F(sim, u, 70); } } },
       allyAction(sim, u, a) {
         if (a.owner === u) { this.e2(sim, u); return; }
         if (E(u) >= 2 && u.state.e2) { u.state.e2 = 0; sim.removeBuff(u, 'aglaeaE2'); }
@@ -1683,6 +1683,7 @@
       dmgScale(sim, u, act) {
         let f = E(u) >= 6 ? 1.3 : 1;
         if (act === 'Skill') f *= 1 + 0.2 * n(sim) / (1 + st(sim, u).dmg);
+        if (act === 'Skill' && u.state.reason) { u.state.reason = false; f *= 8 / 5; }
         return f;
       },
       afterDamage(sim, u, act) {
@@ -1727,7 +1728,7 @@
     1407: {
       autoUlt: 'Automatic at full Newbud.',
       options: [{ key: 'hit', label: 'HP lost per enemy hit (% of Max HP)', type: 'number', def: 10, min: 0, max: 100, step: 1 }],
-      desc: 'Newbud (max 34,000 at Equilibrium Level 5-6): +1 per HP any ally loses — her Skill takes 30% of every ally\'s current HP, enemy hits per the setting — and healing from Abundance teammates (25% Max HP, up to 12% of max Newbud each). Ultimate at full Newbud summons Netherwing (HP = max Newbud). While it\'s out, ally HP loss refills Netherwing instead, and her Skill becomes Boneclaw (Joint ATK: 30% + 50% of her Max HP to all; 40% of allies\' HP). Netherwing spends each turn on Breath Scorches the Shadow (25% of its HP each: 24% → 28% → 34% of her Max HP to all, +30% DMG per Breath this turn, max 6); at ≤25% HP the last Breath drops it to 1 HP and triggers Wings Sweep the Ruins (6 × 40% bounces; E6: 9), which also fires when it leaves. Talent: +20% DMG per ally HP loss (3 stacks, 3 turns). Inverted Torch: +40% SPD at ≥50% HP. E1: ×1.25 DMG (enemy HP thresholds averaged). E2: 2 Ardent Will pay for Breaths and advance her 100%; the next Boneclaw gives 30% Newbud. E6: +20% Quantum RES PEN.',
+      desc: 'Newbud (max 34,000 at Equilibrium Level 5-6): +1 per HP any ally loses — her Skill takes 30% of every ally\'s current HP, enemy hits per the setting — and healing from Abundance teammates (25% Max HP, up to 12% of max Newbud each). Ultimate at full Newbud summons Netherwing (HP = max Newbud). While it\'s out, ally HP loss refills Netherwing instead, and her Skill becomes Boneclaw (Joint ATK: 30% + 50% of her Max HP to all; 40% of allies\' HP). Netherwing spends each turn on Breath Scorches the Shadow (25% of its HP each: 24% → 28% → 34% of her Max HP to all, +30% DMG per Breath this turn, max 6); at ≤25% HP the last Breath drops it to 1 HP and triggers Wings Sweep the Ruins (6 × 40% bounces; E6: 9), which also fires when it leaves. Talent: +20% DMG per ally HP loss (3 stacks, 3 turns). Inverted Torch: +40% SPD at ≥50% HP. E1: ×1.25 DMG (enemy HP thresholds averaged). E2: 2 Ardent Will pay for Breaths and advance her 100%; the next Boneclaw gives 30% Newbud. E6: +20% Quantum RES PEN. (Cyrene\'s Ode to Life and Death lets Newbud overflow, but the sim fires her Ultimate as soon as Newbud is full, so no overflow builds up.)',
       battleStart(sim, u) {
         u.state.hp = new Map(sim.chars().map((a) => [a, 1]));
         u.state.newbud = 0; u.state.max = 34000; // Equilibrium Level 5-6
@@ -1835,6 +1836,7 @@
         return 1;
       },
       afterDamage(sim, u, act) {
+        if (u.state.worldbearing && u.state.khas && isAtk(act)) sim.addDamage(u, std(sim, u, { atk: 5 * 0.1 }), 'Additional');
         if (E(u) >= 6 && act === 'Enhanced' && (u.state.pre || 0) >= 4) {
           const ev = [...sim.events].reverse().find((e) => e.unit === u && e.dmg);
           if (ev) sim.addDamage(u, 0.36 * ev.dmg, 'True DMG');
@@ -1852,17 +1854,18 @@
       },
       heal(sim, u, pct, flat, targets) {
         const s = st(sim, u);
-        u.state.tally += (pct * s.HP + flat) * (1 + (s.heal || 0)) * targets;
+        u.state.tally += (pct * s.HP + flat) * (1 + (s.heal || 0)) * targets * (u.state.sky > 0 ? 1.72 : 1);
         self(sim, u, 'icaDmg', { dmg_Memo: 0.8 }, 2, { maxStacks: 3 });
       },
       summonIca(sim, u) { if (!u.state.ica) { u.state.ica = true; if (E(u) >= 6) team(sim, 'hyacineE6', { resPen: 0.2 }, Infinity); } },
       action(sim, u, t) {
-        if (t === 'Skill') { this.summonIca(sim, u); this.heal(sim, u, 0.08, 160, sim.chars().length); this.heal(sim, u, 0.1, 200, 1); }
+        if (t === 'Skill') { this.summonIca(sim, u); this.heal(sim, u, 0.08, 160, sim.chars().length); this.heal(sim, u, 0.1, 200, 1); if (u.state.sky > 0) u.state.sky -= 1; }
       },
       ult(sim, u) {
         this.summonIca(sim, u);
         this.heal(sim, u, 0.1, 200, sim.chars().length); this.heal(sim, u, 0.12, 240, 1);
         u.state.rain = 3;
+        if (u.state.sky > 0) u.state.sky -= 1;
         team(sim, 'afterRain', { hpPct: 0.3 + (E(u) >= 1 ? 0.5 : 0), hp: 600 }, Infinity);
       },
       turnStart(sim, u) { if (u.state.rain > 0 && --u.state.rain === 0) sim.units.forEach((x) => sim.removeBuff(x, 'afterRain')); },
@@ -1923,12 +1926,231 @@
       allyAttack(sim, u, a, t) { if (t !== 'Elation') this.inflict(sim, u, a, t); },
       afterDamage(sim, u, act) {
         if (isAtk(act)) this.inflict(sim, u, u, act);
+        if (u.state.ocean && isAtk(act)) {
+          if (!u.state.oceanEnergy) { u.state.oceanEnergy = true; F(sim, u, 60); }
+          if (act === 'Basic' || act === 'Skill') {
+            const per = (sim.dots || []).reduce((s, d) => s + AD().dotDamage(sim, d), 0);
+            if (per > 0) sim.addDamage(u, per * (act === 'Skill' ? 0.8 : 0.6), 'DoT detonation');
+          }
+        }
         if (act === 'Ult') {
           const per = (sim.dots || []).reduce((s, d) => s + AD().dotDamage(sim, d) * d.targets, 0);
           if (per > 0) sim.addDamage(u, 1.5 * per, 'DoT detonation');
         }
       },
       ult(sim, u) { this.zone(sim, u); },
+    },
+
+    // ------------------------------------------------------------------ 1412 Cerydra
+    1412: {
+      desc: 'Charge: +1 per Skill, +2 per Ultimate, +1 when the Military Merit holder uses Basic ATK / Skill (Vidi: +1 once on their Ultimate), max 8. At 6 Merit becomes Peerage: the holder\'s Skill gets +72% CRIT DMG and +10% RES PEN (Coup de Main), then 6 Charge is spent. Talent: after the holder attacks, 60% ATK Wind Additional DMG (20 per Ultimate cycle; E6: +300%). Veni: +18% CRIT DMG per 100 ATK above 2000 (max 360%). Vidi: +100% CRIT Rate. E1: holder ignores 16% DEF (+20% on Peerage Skills). E2: holder +40% DMG; Cerydra +160% DMG. E4: Ultimate +240% multiplier. E6: holder and Cerydra +20% RES PEN.',
+      battleStart(sim, u) {
+        u.state.charge = 0; u.state.adds = 20; u.state.vidi = true;
+        const atk = st(sim, u).ATK;
+        self(sim, u, 'veni', { cd: Math.min(3.6, 0.18 * Math.floor(Math.max(0, atk - 2000) / 100)), cr: 1 }, Infinity);
+        if (E(u) >= 2) self(sim, u, 'cerydraE2', { dmg: 1.6 }, Infinity);
+        if (E(u) >= 6) self(sim, u, 'cerydraE6', { resPen: 0.2 }, Infinity);
+      },
+      holder(sim, u) { const tg = sim.targetOf(u); return tg && sim.hasBuff(tg, 'merit') ? tg : null; },
+      charge(sim, u, k) {
+        if (u.state.coup) return;
+        u.state.charge = Math.min(8, u.state.charge + k);
+        const h = this.holder(sim, u);
+        if (h && u.state.charge >= 6 && !sim.hasBuff(h, 'peerage')) sim.addBuff(h, { id: 'peerage', stats: { cd_Skill: 0.72, resPen: 0.1, ...(E(u) >= 1 ? { defIgnore_Skill: 0.2 } : {}) }, turns: Infinity });
+      },
+      afterDamage(sim, u, act) {
+        if (act === 'Skill') {
+          const h = sim.targetOf(u);
+          if (h) {
+            if (E(u) >= 1) sim.addBuff(h, { id: 'cerydraE1', stats: { defIgnore: 0.16 }, turns: Infinity });
+            if (E(u) >= 2) sim.addBuff(h, { id: 'cerydraE2h', stats: { dmg: 0.4 }, turns: Infinity });
+            if (E(u) >= 6) sim.addBuff(h, { id: 'cerydraE6h', stats: { resPen: 0.2 }, turns: Infinity });
+            if (u.state.law) sim.addBuff(h, { id: 'odeLaw', stats: { cd: 0.3 }, turns: Infinity });
+          }
+          this.charge(sim, u, 1);
+        }
+      },
+      ult(sim, u) { u.state.adds = 20; this.charge(sim, u, 2); },
+      dmgScale(sim, u, act) { if (act !== 'Ult' || E(u) < 4) return 1; const p = window.AVEffects.P(u, 'Ultra', 0); return (p + 2.4) / p; },
+      allyAction(sim, u, a, t) {
+        const h = this.holder(sim, u);
+        if (a !== h) return;
+        if (t === 'Skill' && sim.hasBuff(h, 'peerage')) {
+          sim.removeBuff(h, 'peerage');
+          u.state.charge -= 6;
+          if (u.state.law) u.state.charge += 1;
+          this.charge(sim, u, 0);
+        } else if (t === 'Basic' || t === 'Skill') this.charge(sim, u, 1);
+      },
+      allyUlt(sim, u, a) { if (a === this.holder(sim, u) && u.state.vidi && u.state.charge < 8) { u.state.vidi = false; this.charge(sim, u, 1); } },
+      allyAttack(sim, u, a) {
+        if (a !== this.holder(sim, u) || !(u.state.adds > 0)) return;
+        u.state.adds -= 1;
+        sim.addDamage(u, std(sim, u, { atk: 0.6 + (E(u) >= 6 ? 3 : 0) }), 'Additional');
+      },
+    },
+    // ------------------------------------------------------------------ 1413 Evernight
+    1413: {
+      desc: 'Evey has 50% of her Max HP (its DMG and her Ultimate scale with it). Memoria: +1 at battle start and per ability by her or an ally memosprite, +2 when she loses HP (her abilities cost HP), +2 per Skill (+12 in Darkest Riddle), +1 after Evey\'s Skill (E2: +2 on every gain). Evey\'s Skill adds 14% of its HP per 4 Memoria; at 16+ Memoria Evey acts at once with Dream, Dissolving, as Dew (16.8% / 8.4% of its HP per Memoria to the target / others), uses it all, recovers 1 SP and leaves (Skill re-summons it). Skill: memosprites +24% of her CRIT DMG for 2 turns (+5/15/50/65% for 1/2/3/4 Remembrance allies). Talent / trace: +60% and +15% CRIT DMG while she and Evey keep losing HP; +35% CRIT Rate. Darkest Riddle (Ultimate; 2 Charges, 1 per Dream; E2: 4): enemies +30% DMG taken, she and Evey +60% DMG. E1: memosprites ×1.2–1.5 DMG by enemy count. E2: +40% CRIT DMG. E6: allies +20% RES PEN; Dream refunds 30% of the Memoria.',
+      battleStart(sim, u) {
+        u.state.mem = 0; u.state.riddle = 0;
+        this.gain(sim, u, 1);
+        self(sim, u, 'evernightTrace', { cr: 0.35, ...(E(u) >= 2 ? { cd: 0.4 } : {}) }, Infinity);
+        if (E(u) >= 6) team(sim, 'evernightE6', { resPen: 0.2 }, Infinity);
+      },
+      evey(sim, u) { return sim.units.find((x) => x.owner === u && x.name === 'Evey' && x.alive); },
+      gain(sim, u, k) {
+        u.state.mem += k + (E(u) >= 2 ? 2 : 0);
+        const ev = this.evey(sim, u);
+        if (ev && u.state.mem >= 16 && !u.state.dream) { u.state.dream = true; sim.actNow(ev); }
+      },
+      hpLoss(sim, u) { self(sim, u, 'withMe', { cd: 0.6 }, 2); this.gain(sim, u, 2); },
+      action(sim, u, t) {
+        self(sim, u, 'darkNight', { cd: 0.15 }, 2);
+        this.hpLoss(sim, u);
+        this.gain(sim, u, 1);
+        if (t === 'Skill') {
+          if (!this.evey(sim, u)) sim.actNow(this.resummon(sim, u));
+          const s = st(sim, u), rem = sim.chars().filter((a) => a.cfg.char.path === 'Remembrance').length;
+          self(sim, u, 'everSkill', { cd_Memo: 0.24 * s.cd + [0, 0.05, 0.15, 0.5, 0.65][Math.min(4, rem)] + (u.state.time ? 0.12 * s.cd : 0) }, 2, { tick: 'owner', owner: u });
+          this.gain(sim, u, 2 + (u.state.riddle > 0 ? 12 : 0) + (u.state.time ? 1 : 0));
+        }
+      },
+      resummon(sim, u) {
+        return sim.spawn({ key: `${u.key}:Evey`, name: 'Evey', owner: u, icon: u.icon, memo: true, fixedSpd: window.AVEffects.P(u, 'Talent', 3) });
+      },
+      hit(sim, u) { this.hpLoss(sim, u); },
+      ult(sim, u) {
+        u.state.riddle = E(u) >= 2 ? 4 : 2;
+        self(sim, u, 'riddle', { dmg: 0.6 }, Infinity);
+        if (!this.evey(sim, u)) this.resummon(sim, u);
+        this.gain(sim, u, 1 + (u.state.time ? 1 : 0));
+      },
+      turnStart(sim, u) {
+        if (u.state.riddleOn && !(u.state.riddle > 0)) {
+          u.state.riddleOn = false;
+          sim.removeBuff(u, 'riddle');
+          sim.enemyMods = (sim.enemyMods || []).filter((m) => m.id !== 'darkestRiddle');
+        }
+      },
+      afterDamage(sim, u, act) { if (act === 'Ult') { u.state.riddleOn = true; emod(sim, 'darkestRiddle', { vuln: 0.3 }, Infinity); } },
+      e1(sim) { const k = n(sim); return k >= 4 ? 1.2 : k === 3 ? 1.25 : k === 2 ? 1.3 : 1.5; },
+      dmgScale(sim, u, act, extra, unit) {
+        if (unit && unit.name === 'Evey') return u.state.dream ? 0 : 0.5 * (E(u) >= 1 ? this.e1(sim) : 1);
+        if (act === 'Ult') return 0.5 * (E(u) >= 1 ? this.e1(sim) : 1);
+        return 1;
+      },
+      extraDamage(sim, u, act, extra, unit) {
+        if (!unit || unit.name !== 'Evey') return 0;
+        const e1 = E(u) >= 1 ? this.e1(sim) : 1, m = u.state.mem;
+        if (u.state.dream) return std(sim, u, { hp: 0.5 * m * (0.168 + 0.084 * (n(sim) - 1)) }, 'Memo') * e1 * (u.state.time ? 1.18 : 1);
+        return std(sim, u, { hp: 0.5 * 0.14 * Math.floor(m / 4) }, 'Memo') * e1;
+      },
+      allyAction(sim, u, a) {
+        if (a.memo || (a.kind === 'summon' && a.owner)) {
+          if (a.owner === u && a.name === 'Evey') {
+            self(sim, u, 'darkNight', { cd: 0.15 }, 2);
+            if (u.state.dream) {
+              u.state.dream = false;
+              const used = u.state.mem;
+              u.state.mem = E(u) >= 6 ? 0.3 * used : 0;
+              sim.gainSP(1, u);
+              if (u.state.riddle > 0) u.state.riddle -= 1;
+              sim.remove(a);
+            } else this.gain(sim, u, 1);
+          }
+          this.gain(sim, u, 1);
+        }
+      },
+    },
+    // ------------------------------------------------------------------ 1414 Dan Heng • Permansor Terrae
+    1414: {
+      desc: 'Empyreanity: his Skill gives the Bondmate +15% of his ATK as ATK. Ultimate: Souldragon is enhanced for 2 actions (E2: 4): each deals 80% of his ATK to all enemies as a follow-up, plus 80% of the Bondmate\'s ATK as Additional DMG to all (E2: 160%) and 40% of it to one enemy (Sublimity). E1: Ultimate gives the Bondmate +18% RES PEN for 3 turns. E6: enemies take +20% DMG while the Bondmate is out, the Bondmate ignores 12% DEF, and his Ultimate adds 330% of the Bondmate\'s ATK to all enemies.',
+      battleStart(sim, u) { u.state.enh = 0; },
+      bond(sim, u) { const b = u.state.bond; return b && b.alive ? b : null; },
+      afterDamage(sim, u, act) {
+        const b = this.bond(sim, u);
+        if (act === 'Skill' && b) {
+          sim.units.forEach((x) => sim.removeBuff(x, 'empyreanity'));
+          sim.addBuff(b, { id: 'empyreanity', stats: { atk: 0.15 * st(sim, u).ATK }, turns: Infinity });
+          if (E(u) >= 6) { emod(sim, 'dhptE6', { vuln: 0.2 }, Infinity); sim.addBuff(b, { id: 'dhptE6', stats: { defIgnore: 0.12 }, turns: Infinity }); }
+        }
+        if (act === 'Ult') {
+          u.state.enh = E(u) >= 2 ? 4 : 2;
+          if (b && E(u) >= 1) sim.addBuff(b, { id: 'dhptE1', stats: { resPen: 0.18 }, turns: 3 });
+          if (b && E(u) >= 6) sim.addDamage(u, std(sim, b, { atk: 3.3 * n(sim) }), 'Bondmate Additional');
+        }
+      },
+      extraDamage(sim, u, act, extra, unit) {
+        if (!unit || unit.name !== 'Souldragon' || !(u.state.enh > 0)) return 0;
+        u.state.enh -= 1;
+        const b = this.bond(sim, u);
+        let d = std(sim, u, { atk: 0.8 * n(sim) }, 'FUA');
+        if (b) d += std(sim, b, { atk: 0.8 * (E(u) >= 2 ? 2 : 1) * n(sim) + 0.4 });
+        return d;
+      },
+    },
+    // ------------------------------------------------------------------ 1415 Cyrene
+    1415: {
+      desc: 'Talent: allies +20% DMG. Causality in Trichotomy: at 180+ SPD allies +20% DMG and she / Demiurge get +2% Ice RES PEN per SPD above 180 (max 60). Skill Zone (2 of her turns; permanent after her first Ultimate): every ally DMG instance adds 24% as True DMG (E2: +6% per Ode-buffed ally, max +24%). Ripples: she and Demiurge +50% CRIT Rate. Demiurge\'s Minuet: 60% of its Max HP (= hers) to all, plus Ode to Ego bounces of 60% per teammate who gave Recollection (E1: +12; E4: +6% per Minuet, max 24 stacks); its first turn is the Ode on the chosen ally (no DMG): +40% DMG for 2 turns, or for Chrysos Heirs their special Ode (Genesis, Romance, Passage, Strife, Reason, Sky, Trickery, Worldbearing, Ocean, Law, Time, Earth). E6: first Ego: enemies −20% DEF.',
+      CHRYSOS: { 8008: 'Genesis', 1402: 'Romance', 1403: 'Passage', 1404: 'Strife', 1407: 'LifeDeath', 1405: 'Reason', 1409: 'Sky', 1406: 'Trickery', 1408: 'Worldbearing', 1410: 'Ocean', 1412: 'Law', 1413: 'Time', 1414: 'Earth' },
+      battleStart(sim, u) {
+        u.state.zone = 0; u.state.minuets = 0; u.state.givers = new Set();
+        team(sim, 'cyreneTalent', { dmg: 0.2 }, Infinity);
+        const sp = sim.spd(u);
+        if (sp >= 180) team(sim, 'causality', { dmg: 0.2 }, Infinity);
+        self(sim, u, 'causalityPen', { resPen: 0.02 * Math.min(60, Math.max(0, sp - 180)) }, Infinity);
+      },
+      turnStart(sim, u) { if (!u.state.ripples && u.state.zone > 0) u.state.zone -= 1; },
+      action(sim, u, t) { if (t === 'Skill') u.state.zone = 2; },
+      ult(sim, u) { self(sim, u, 'ripplesCR', { cr: 0.5 }, Infinity); },
+      damageDealt(sim, u, by, amt, label) {
+        if (!(u.state.zone > 0 || u.state.ripples) || !amt || /True/.test(label || '')) return;
+        if (!by || (by.kind !== 'char' && !by.owner)) return;
+        const k = 0.24 + (E(u) >= 2 ? Math.min(0.24, 0.06 * (u.state.odeAllies || 0)) : 0);
+        sim.addDamage(u, k * amt, 'True DMG (Zone)');
+      },
+      allyAction(sim, u, a) {
+        if (a.kind === 'char' && a !== u) u.state.givers.add(a);
+        if (a.name !== 'Demiurge' || a.owner !== u) return;
+        if (u.state.demiOde) { this.ode(sim, u, u.state.demiOde); return; }
+        u.state.minuets += 1;
+        if (E(u) >= 6 && u.state.minuets === 1) emod(sim, 'cyreneE6', { def: 0.2 }, Infinity);
+        for (const h of sim.chars()) {
+          if (h.state.sky !== undefined) h.state.sky = (h.state.sky || 0) + 2;
+          if (h.cfg.char.id === '1414' && h.state.bond) sim.addBuff(h.state.bond, { id: 'odeEarth', stats: { dmg: 0.24 }, turns: Infinity });
+        }
+      },
+      ode(sim, u, tg) {
+        u.state.demiOde = false;
+        u.state.odeAllies = (u.state.odeAllies || 0) + 1;
+        const kind = this.CHRYSOS[tg.cfg.char.id];
+        const add = (stats, turns = Infinity) => sim.addBuff(tg, { id: `ode${kind || ''}`, stats, turns });
+        const s = st(sim, u);
+        switch (kind) {
+          case 'Genesis': add({ atk: 0.16 * s.HP, cr: 0.72 * Math.min(1, s.cr) }); break;
+          case 'Romance': add({ dmg: (sm, a) => (a.state.stance ? 0.72 : 0), defIgnore: (sm, a) => (a.state.stance ? 0.36 : 0) }); tg.state.romance = true; break;
+          case 'Passage': add({ defIgnore: 0.12 }); break;
+          case 'Strife': sim.addBuff(tg, { id: 'odeStrife', stats: { cd: 2 }, turns: 1 }); break;
+          case 'Reason': tg.state.reason = true; sim.gainSP(1, u); sim.chars().filter((a) => a.cfg.char.path === 'Erudition').forEach((a) => sim.addBuff(a, { id: 'trueKnowledge', stats: { atkPct: 0.6, dmg_Skill: 0.4 }, turns: 2 })); break;
+          case 'Sky': F(sim, tg, 24); tg.state.sky = 2; break;
+          case 'Trickery': add({ dmg: 0.36 }); emod(sim, 'odeTrickery', { def: (0.2 + 0.12 * (n(sim) - 1)) / n(sim) }, Infinity); break;
+          case 'Worldbearing': add({ cr: (sm, a) => (a.state.khas ? 0.16 : 0), cd: (sm, a) => (a.state.khas ? Math.min(0.72, 0.12 * (a.state.overflow || 0)) : 0) }); tg.state.worldbearing = true; break;
+          case 'Ocean': add({ dmg: 1.2 }); tg.state.ocean = true; break;
+          case 'Law': { tg.state.law = true; const h = sim.targetOf(tg); if (h && sim.hasBuff(h, 'merit')) sim.addBuff(h, { id: 'odeLaw', stats: { cd: 0.3 }, turns: Infinity }); break; }
+          case 'Time': tg.state.time = true; break;
+          case 'Earth': tg.state.odeEarth = true; if (tg.state.bond) sim.addBuff(tg.state.bond, { id: 'odeEarth', stats: { dmg: 0.24 }, turns: Infinity }); break;
+          case 'LifeDeath': break;
+          default: sim.addBuff(tg, { id: 'odeAllLives', stats: { dmg: 0.4 }, turns: 2 });
+        }
+      },
+      dmgScale(sim, u, act, extra, unit) { return unit && unit.name === 'Demiurge' && u.state.demiOde ? 0 : 1; },
+      extraDamage(sim, u, act, extra, unit) {
+        if (!unit || unit.name !== 'Demiurge' || u.state.demiOde) return 0;
+        const bounces = Math.min(3, u.state.givers.size) + (E(u) >= 1 ? 12 : 0);
+        const e4 = E(u) >= 4 ? 1 + 0.06 * Math.min(24, u.state.minuets) / 0.6 : 1;
+        return std(sim, u, { hp: 0.6 * bounces }, 'Memo') * e4;
+      },
     },
   };
 
