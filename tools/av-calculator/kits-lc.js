@@ -254,6 +254,169 @@
         if (u.state.lc23061Sp >= L(u, 2)) { team(sim, 'radiantCrown', { defIgnore: L(u, 4) }, L(u, 3), { tick: 'owner', owner: u }); self(sim, u, 'radiantSkill', { dmg_Skill: L(u, 1) }, L(u, 3)); }
       },
     },
+
+    24004: {
+      desc: 'After attacking: +ATK per enemy hit (max 5) until the next attack; hitting 3+ enemies also gives +SPD for 1 turn.',
+      afterDamage(sim, u, act) {
+        if (!isAtk(act)) return;
+        const k = sim.targetsHit(u, act);
+        sim.removeBuff(u, 'lc24004');
+        self(sim, u, 'lc24004', { atkPct: L(u, 1) * Math.min(5, k) }, Infinity);
+        if (k >= L(u, 2)) sim.addBuff(u, { id: 'lc24004spd', pct: L(u, 3), turns: L(u, 4) });
+      },
+    },
+    // ================================================================ Harmony
+    20005: { desc: 'All allies +ATK.', battleStart(sim, u) { team(sim, 'lc20005', { atkPct: L(u, 0) }, Infinity); } },
+    20012: {
+      desc: 'Attacking or being hit: +Energy (once per turn).',
+      once(sim, u) { if (u.state.lc20012 !== sim.turnId) { u.state.lc20012 = sim.turnId; G(sim, u, L(u, 0)); } },
+      action(sim, u, t) { if (isAtk(t)) this.once(sim, u); },
+      hit(sim, u) { this.once(sim, u); },
+    },
+    21004: { desc: 'Attacking: +Energy (once per turn).', action(sim, u, t) { if (isAtk(t) && u.state.lc21004 !== sim.turnId) { u.state.lc21004 = sim.turnId; G(sim, u, L(u, 1)); } } },
+    21011: { desc: 'Allies of her Type +DMG.', battleStart(sim, u) { sim.chars().filter((a) => a.cfg.char.element === u.cfg.char.element).forEach((a) => sim.addBuff(a, { id: 'lc21011', stats: { dmg: L(u, 0) }, turns: Infinity })); } },
+    21025: {
+      desc: 'Skill: the next ally to act gets +DMG for 1 turn.',
+      action(sim, u, t) { if (t === 'Skill') u.state.lc21025 = true; },
+      allyTurnStart(sim, u, a) { if (u.state.lc21025 && a.kind === 'char') { u.state.lc21025 = false; sim.addBuff(a, { id: 'lc21025', stats: { dmg: L(u, 0) }, turns: L(u, 1) }); } },
+    },
+    21032: {
+      desc: 'Battle start and each of her turns: rotates all allies between +ATK, +CRIT DMG and +Energy Regeneration Rate.',
+      KINDS: ['atkPct', 'cd', 'err'],
+      roll(sim, u) {
+        u.state.lc21032 = ((u.state.lc21032 ?? -1) + 1) % 3;
+        const k = this.KINDS[u.state.lc21032];
+        sim.units.forEach((x) => sim.removeBuff(x, 'lc21032'));
+        team(sim, 'lc21032', { [k]: L(u, u.state.lc21032) }, Infinity);
+      },
+      battleStart(sim, u) { this.roll(sim, u); },
+      turnStart(sim, u) { this.roll(sim, u); },
+    },
+    21036: {
+      desc: 'Childishness: all allies +DMG for the ability type she last used (Basic ATK / Skill / Ultimate).',
+      give(sim, u, type) { sim.units.forEach((x) => sim.removeBuff(x, 'childishness')); team(sim, 'childishness', { [`dmg_${type}`]: L(u, 0) }, Infinity); },
+      action(sim, u, t) { if (t === 'Basic' || t === 'Skill') this.give(sim, u, t); },
+      ult(sim, u) { this.give(sim, u, 'Ult'); },
+    },
+    21046: {
+      desc: 'Characters sharing a Path with another ally: +CRIT DMG.',
+      battleStart(sim, u) { const cs = sim.chars(); cs.filter((a) => cs.filter((b) => b.cfg.char.path === a.cfg.char.path).length >= 2).forEach((a) => sim.addBuff(a, { id: 'lc21046', stats: { cd: L(u, 1) }, turns: Infinity })); },
+    },
+    21056: { desc: 'All allies +Break DMG.', battleStart(sim, u) { team(sim, 'lc21056', { breakDmg: L(u, 0) }, Infinity); } },
+    22002: { desc: 'Ultimate: +DMG for 1 turn.', ult(sim, u) { self(sim, u, 'lc22002', { dmg: L(u, 1) }, L(u, 2)); } },
+    22005: { desc: 'Skill: +ATK (3 stacks).', action(sim, u, t) { if (t === 'Skill') self(sim, u, 'lc22005', { atkPct: L(u, 1) }, Infinity, { maxStacks: L(u, 2) }); } },
+    23003: {
+      desc: 'Ultimate on an ally: +1 SP (every other Ultimate). Skill: the next ally to act gets +DMG for 1 turn.',
+      ult(sim, u) { if (!sim.targetOf(u)) return; u.state.lc23003 = (u.state.lc23003 || 0) + 1; if (u.state.lc23003 % 2 === 1) sim.gainSP(1, u); },
+      action(sim, u, t) { if (t === 'Skill') u.state.lc23003n = true; },
+      allyTurnStart(sim, u, a) { if (u.state.lc23003n && a.kind === 'char') { u.state.lc23003n = false; sim.addBuff(a, { id: 'lc23003', stats: { dmg: L(u, 1) }, turns: L(u, 2) }); } },
+    },
+    23019: {
+      desc: 'Battle start: all allies +10 Energy. Ultimate: all allies +DMG for 3 turns; at 150% Break Effect also +1 SP.',
+      battleStart(sim, u) { sim.chars().forEach((a) => G(sim, a, L(u, 4))); },
+      ult(sim, u) { team(sim, 'lc23019', { dmg: L(u, 1) }, L(u, 2)); if ((st(sim, u).be || 0) >= L(u, 3)) sim.gainSP(1, u); },
+    },
+    23021: {
+      desc: 'Mask (battle start, 3 turns; again for 4 turns after every 4 SP she recovers): teammates +CRIT Rate and +CRIT DMG.',
+      mask(sim, u, turns) { sim.allies(u).forEach((a) => sim.addBuff(a, { id: 'mask', stats: { cr: L(u, 4), cd: L(u, 1) }, turns, tick: 'owner', owner: u })); },
+      battleStart(sim, u) { u.state.flame = 0; this.mask(sim, u, L(u, 5)); },
+      spGained(sim, u, by, gained, over) {
+        if (by !== u) return;
+        u.state.flame += (gained || 0) + (over || 0);
+        while (u.state.flame >= L(u, 2)) { u.state.flame -= L(u, 2); this.mask(sim, u, L(u, 3)); }
+      },
+    },
+    23026: {
+      desc: 'Each ally attack: Cantillation, +Energy Regeneration Rate (5 stacks). Ultimate: Cadenza for 1 turn: +ATK, all allies +DMG.',
+      allyAttack(sim, u, a) { if (a.kind === 'char') self(sim, u, 'cantillation', { err: L(u, 0) }, Infinity, { maxStacks: L(u, 1) }); },
+      action(sim, u, t) { if (isAtk(t)) self(sim, u, 'cantillation', { err: L(u, 0) }, Infinity, { maxStacks: L(u, 1) }); },
+      ult(sim, u) { sim.removeBuff(u, 'cantillation'); self(sim, u, 'cadenza', { atkPct: L(u, 3) }, L(u, 4)); team(sim, 'cadenzaTeam', { dmg: L(u, 2) }, L(u, 4)); },
+    },
+    23034: {
+      desc: 'Skill / Ultimate on an ally: +Energy, the target gets Hymn (+DMG, 3 stacks, 3 turns); every 2 such uses recover 1 SP.',
+      give(sim, u, kind) {
+        const kit = sim.kitOf(u), tg = sim.targetOf(u);
+        if (!tg || tg === u || !(kit && kit.allyTarget && kit.allyTarget[kind])) return;
+        G(sim, u, L(u, 0));
+        sim.addBuff(tg, { id: 'hymn', stats: { dmg: L(u, 1) }, turns: L(u, 2), maxStacks: L(u, 3) });
+        if (++u.state.lc23034 % L(u, 4) === 0) sim.gainSP(1, u);
+      },
+      battleStart(sim, u) { u.state.lc23034 = 0; },
+      action(sim, u, t) { if (t === 'Skill') this.give(sim, u, 'Skill'); },
+      ult(sim, u) { this.give(sim, u, 'Ultimate'); },
+    },
+    23038: {
+      desc: 'Battle start: +21 Energy and Presage. After her follow-up: +12 Energy and Presage. Presage (2 turns): all allies +CRIT DMG.',
+      presage(sim, u) { team(sim, 'presage', { cd: L(u, 3) }, L(u, 2), { tick: 'owner', owner: u }); },
+      battleStart(sim, u) { G(sim, u, L(u, 4)); this.presage(sim, u); },
+      followUpDone(sim, u) { G(sim, u, L(u, 1)); this.presage(sim, u); },
+    },
+    23048: {
+      desc: 'Ultimate attacks recover 1 SP. Skill on an ally: their Skill +DMG for 3 turns.',
+      afterDamage(sim, u, act) { if (act === 'Ult') sim.gainSP(1, u); if (act === 'Skill') { const tg = sim.targetOf(u); if (tg && tg !== u) sim.addBuff(tg, { id: 'lc23048', stats: { dmg_Skill: L(u, 3) }, turns: L(u, 4) }); } },
+    },
+    // ================================================================ Nihility
+    20004: { desc: 'Battle start: +Effect Hit Rate for 3 turns.', battleStart(sim, u) { self(sim, u, 'lc20004', { ehr: L(u, 0) }, L(u, 1)); } },
+    20011: { desc: '+DMG vs Slowed enemies.', battleStart(sim, u) { self(sim, u, 'lc20011', { dmg: (s) => (s.isSlowed() ? L(u, 0) : 0) }, Infinity); } },
+    20018: {
+      desc: 'After Skill, the next Basic ATK adds 60% ATK Additional DMG.',
+      action(sim, u, t) { if (t === 'Skill') u.state.lc20018 = true; },
+      extraDamage(sim, u, act) { if (act === 'Basic' && u.state.lc20018) { u.state.lc20018 = false; return std(sim, u, { atk: L(u, 0) }); } return 0; },
+    },
+    21001: { desc: '+DMG per debuff on the target (3), DoT included.', battleStart(sim, u) { self(sim, u, 'lc21001', { dmg: (s) => L(u, 0) * Math.min(L(u, 1), s.debuffCount()) }, Infinity); } },
+    21008: { desc: '+DoT DMG.', battleStart(sim, u) { self(sim, u, 'lc21008', { dotDmg: L(u, 1) }, Infinity); } },
+    21015: { desc: 'Hits: 60% base chance to Ensnare (−DEF for 1 turn).', afterDamage(sim, u, act) { if (isAtk(act) && sim.chance(u, 'ensnare', L(u, 0))) emod(sim, 'ensnare', { def: L(u, 1) }, L(u, 2)); } },
+    21022: { desc: '+DMG (and DoT) vs Shocked / Wind Sheared enemies (any DoT counted).', battleStart(sim, u) { self(sim, u, 'lc21022', { dmg: (s) => ((s.dots || []).length ? L(u, 1) : 0) }, Infinity); } },
+    21029: { desc: 'After Basic ATK / Skill: 48% ATK Additional DMG.', afterDamage(sim, u, act) { if (act === 'Basic' || act === 'Skill') sim.addDamage(u, std(sim, u, { atk: L(u, 0) }), 'Additional (LC)'); } },
+    21041: {
+      desc: 'Inflicting a debuff (her Skill / Ultimate): Trick, +DMG for 1 turn (3 stacks). At 80% Effect Hit Rate: +ATK.',
+      battleStart(sim, u) { if (((u.stats0 && u.stats0.ehr) || 0) >= L(u, 3)) self(sim, u, 'lc21041atk', { atkPct: L(u, 4) }, Infinity); },
+      action(sim, u, t) { if (t === 'Skill') self(sim, u, 'trick', { dmg: L(u, 0) }, L(u, 2), { maxStacks: L(u, 1) }); },
+      ult(sim, u) { self(sim, u, 'trick', { dmg: L(u, 0) }, L(u, 2), { maxStacks: L(u, 1) }); },
+    },
+    21044: { desc: '+CRIT DMG vs Slowed or DEF-reduced enemies.', battleStart(sim, u) { self(sim, u, 'lc21044', { cd: (s) => (s.isSlowed() || (s.enemyMods || []).some((m) => m.def > 0) ? L(u, 1) : 0) }, Infinity); } },
+    21061: { desc: 'After attacking: enemies take +DMG for 2 turns.', afterDamage(sim, u, act) { if (isAtk(act)) emod(sim, 'lc21061', { vuln: L(u, 2) }, L(u, 3)); } },
+    22000: { desc: 'Attacking a DEF-reduced enemy: +Energy.', action(sim, u, t) { if (isAtk(t) && (sim.enemyMods || []).some((m) => m.def > 0)) G(sim, u, L(u, 1)); } },
+    23004: {
+      desc: '+DMG vs debuffed enemies. Skill: +Effect Hit Rate and +ATK for that attack.',
+      battleStart(sim, u) { self(sim, u, 'lc23004', { dmg: (s) => (s.debuffCount() > 0 ? L(u, 0) : 0) }, Infinity); },
+      action(sim, u, t) { if (t === 'Skill') self(sim, u, 'lc23004s', { ehr: L(u, 1), atkPct: L(u, 2) }, Infinity); },
+      afterDamage(sim, u) { sim.removeBuff(u, 'lc23004s'); },
+    },
+    23006: {
+      desc: 'Hits inflict Erode: 60% ATK Lightning DoT for 1 turn (counts as Shock).',
+      afterDamage(sim, u, act) {
+        if (!isAtk(act)) return;
+        const ab = AD().abilityFor(sim, u, act);
+        sim.addDot({ id: `${u.key}:erode`, src: u, mult: { atk: L(u, 0) }, turns: L(u, 4), targets: ab ? sim.dotTargets(ab) : 1 });
+      },
+    },
+    23007: {
+      desc: '+CRIT Rate vs enemies with 3+ debuffs. Basic ATK / Skill / Ultimate: Aether Code on a hit enemy, +DMG taken for 1 turn.',
+      battleStart(sim, u) { self(sim, u, 'lc23007', { cr: (s) => (s.debuffCount() >= 3 ? L(u, 2) : 0) }, Infinity); },
+      afterDamage(sim, u, act) { if (['Basic', 'Skill', 'Ult', 'Enhanced'].includes(act)) emod(sim, 'aetherCode', { vuln: L(u, 4) / Math.max(1, sim.enemyCount || 1) * Math.min(sim.targetsHit(u, act), sim.enemyCount || 1) }, L(u, 3)); },
+    },
+    23022: {
+      desc: 'Prophet: one stack per DoT kind present when she deals DMG (4): +ATK and her DoT ignores DEF.',
+      afterDamage(sim, u, act) {
+        if (!isAtk(act)) return;
+        const kinds = new Set((sim.dots || []).map((d) => d.id)).size;
+        const k = Math.min(L(u, 3), Math.max(u.state.lc23022 || 0, kinds));
+        u.state.lc23022 = k;
+        sim.removeBuff(u, 'prophet');
+        if (k) self(sim, u, 'prophet', { atkPct: L(u, 1) * k, defIgnore_DoT: L(u, 2) * k }, Infinity);
+      },
+    },
+    23024: { desc: 'Mirage Fizzle on hit enemies: +DMG to them, and Ultimate +DMG more.', battleStart(sim, u) { self(sim, u, 'lc23024', { dmg: L(u, 1), dmg_Ult: L(u, 2) }, Infinity); } },
+    23029: {
+      desc: 'Basic ATK / Skill / Ultimate: 60% base chance of Unarmored (+DMG taken, 2 turns); on enemies with her DoT, 60% to upgrade to Cornered (+more).',
+      afterDamage(sim, u, act) {
+        if (!['Basic', 'Skill', 'Ult', 'Enhanced'].includes(act) || !sim.chance(u, 'unarmored', L(u, 1))) return;
+        const mine = (sim.dots || []).some((d) => d.src === u);
+        const cornered = mine && sim.chance(u, 'cornered', L(u, 4));
+        emod(sim, 'unarmored', { vuln: L(u, 2) + (cornered ? L(u, 5) : 0) }, L(u, 3));
+      },
+    },
   };
 
   window.AVLightConeKits = lc;
