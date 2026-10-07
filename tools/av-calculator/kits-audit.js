@@ -1558,6 +1558,141 @@
       },
       dmgScale(sim, u, act) { return act === 'FollowUp' && E(u) >= 4 ? 2 : 1; },
     },
+
+    // ------------------------------------------------------------------ 1401 The Herta
+    1401: {
+      desc: 'Interpretation on the main enemy: 25 at battle start, +1 per ally attack and +1 more to it (+2 more from Erudition attackers), max 42; her Enhanced Skill adds 8% (2+ Erudition: 16%) of ATK per stack to every hit on it (E1: counts 1.5× the stacks) and resets it to 1 (E1: 15); at 42 it also gets +50% Ice DMG. Answer: +1 per Interpretation stack applied (max 99); Ultimate +1% multiplier per Answer. Ultimate: +80% ATK for 3 turns. E6: +20% Ice RES PEN; Ultimate +140% multiplier (3+ enemies, 250% at 2, 400% at 1).',
+      battleStart(sim, u) {
+        u.state.interp = 0; u.state.answer = 0;
+        this.add(sim, u, 25 + n(sim) - 1);
+        if (E(u) >= 6) self(sim, u, 'thehertaE6', { resPen: 0.2 }, Infinity);
+      },
+      erudites(sim) { return sim.chars().filter((a) => a.cfg.char.path === 'Erudition').length; },
+      add(sim, u, k) { u.state.interp = Math.min(42, u.state.interp + k); u.state.answer = Math.min(99, u.state.answer + k); },
+      onAttack(sim, u, a) { this.add(sim, u, 2 + (a.cfg && a.cfg.char.path === 'Erudition' ? 2 : 0)); },
+      allyAttack(sim, u, a) { if (a.kind === 'char' || a.memo) this.onAttack(sim, u, a); },
+      action(sim, u, t) {
+        if (t === 'Enhanced') {
+          u.state.useInterp = Math.min(42, u.state.interp * (E(u) >= 1 ? 1.5 : 1));
+          if (u.state.interp >= 42) self(sim, u, 'aloofly', { dmg: 0.5 }, Infinity);
+        }
+      },
+      afterDamage(sim, u, act) {
+        sim.removeBuff(u, 'aloofly');
+        if (act === 'Enhanced') u.state.interp = E(u) >= 1 ? 15 : 1;
+        if (isAtk(act)) this.onAttack(sim, u, u);
+      },
+      ult(sim, u) { self(sim, u, 'toldYa', { atkPct: 0.8 }, 3); },
+      extraDamage(sim, u, act) {
+        if (act !== 'Enhanced') return 0;
+        const per = this.erudites(sim) >= 2 ? 0.16 : 0.08;
+        return std(sim, u, { atk: per * (u.state.useInterp || 0) * 4 }, 'Skill');
+      },
+      dmgScale(sim, u, act) {
+        if (act !== 'Ult') return 1;
+        const k = n(sim), e6 = E(u) >= 6 ? (k >= 3 ? 1.4 : k === 2 ? 2.5 : 4) : 0;
+        return (2 + 0.01 * u.state.answer + e6) / 2;
+      },
+    },
+    // ------------------------------------------------------------------ 1402 Aglaea
+    1402: {
+      desc: 'Seam Stitch (while Garmentmaker is out): after Aglaea or Garmentmaker attacks it, +30% ATK Lightning Additional DMG (E1: it takes +15% DMG). The Myopic\'s Doom: in Supreme Stance, ATK + 720% of her SPD + 360% of Garmentmaker\'s. E2: each Aglaea / Garmentmaker action: ignore 14% DEF (3 stacks) until another unit acts. E6: Supreme Stance +20% Lightning RES PEN; Joint ATK +10/30/60% at 160/240/320 SPD.',
+      gm(sim, u) { return sim.units.find((x) => x.owner === u && x.name === 'Garmentmaker' && x.alive); },
+      battleStart(sim, u) {
+        u.state.e2 = 0;
+        self(sim, u, 'myopic', { atk: (s, a) => { if (!a.state.stance) return 0; const gm = this.gm(s, a); return 7.2 * s.spd(a) + (gm ? 3.6 * s.spd(gm) : 0); } }, Infinity);
+        if (E(u) >= 6) self(sim, u, 'aglaeaE6', { resPen: (s, a) => (a.state.stance ? 0.2 : 0) }, Infinity);
+      },
+      stitch(sim, u) {
+        if (!this.gm(sim, u)) return;
+        sim.addDamage(u, std(sim, u, { atk: 0.3 }), 'Seam Stitch');
+        if (E(u) >= 1) emod(sim, 'seamStitch', { vuln: 0.15 / n(sim) }, Infinity);
+      },
+      e2(sim, u) { if (E(u) < 2) return; u.state.e2 = Math.min(3, u.state.e2 + 1); sim.removeBuff(u, 'aglaeaE2'); self(sim, u, 'aglaeaE2', { defIgnore: 0.14 * u.state.e2 }, Infinity); },
+      action(sim, u) { this.e2(sim, u); },
+      afterDamage(sim, u, act) { if (isAtk(act)) this.stitch(sim, u); },
+      allyAction(sim, u, a) {
+        if (a.owner === u) { this.e2(sim, u); return; }
+        if (E(u) >= 2 && u.state.e2) { u.state.e2 = 0; sim.removeBuff(u, 'aglaeaE2'); }
+      },
+      allyAttack(sim, u, a) { if (a.owner === u) this.stitch(sim, u); },
+      dmgScale(sim, u, act) {
+        if (E(u) < 6 || act !== 'Enhanced') return 1;
+        const sp = sim.spd(u);
+        return 1 + (sp > 320 ? 0.6 : sp > 240 ? 0.3 : sp > 160 ? 0.1 : 0) / (1 + st(sim, u).dmg);
+      },
+    },
+    // ------------------------------------------------------------------ 1403 Tribbie
+    1403: {
+      desc: 'Zone (2 of her turns): after an ally attacks, 12% of her Max HP Quantum Additional DMG per enemy hit (E2: 120% and 1 more instance); Glass Ball: +9% of the team\'s total Max HP as Max HP. Lamb Outside the Wall: after her follow-up, +72% DMG for 3 turns (3 stacks). E1: in the Zone, +24% of each attack\'s DMG as True DMG. E4: Numinosity: allies ignore 18% DEF. E6: Ultimate launches her follow-up; follow-up +729% DMG.',
+      battleStart(sim, u) { u.state.zone = 0; },
+      turnStart(sim, u) { if (u.state.zone > 0 && --u.state.zone === 0) sim.removeBuff(u, 'glassBall'); },
+      ult(sim, u) {
+        u.state.zone = 2;
+        const total = sim.chars().reduce((a, c) => a + (c.stats0 ? st(sim, c).HP : 0), 0);
+        self(sim, u, 'glassBall', { hp: 0.09 * total }, Infinity);
+      },
+      action(sim, u, t) { if (E(u) >= 4 && t === 'Skill') team(sim, 'tribbieE4', { defIgnore: 0.18 }, 3, { tick: 'owner', owner: u }); },
+      zoneHit(sim, u, a, t) {
+        if (!(u.state.zone > 0) || t === 'Elation') return;
+        const hits = sim.targetsHit(a, t), k = E(u) >= 2 ? 1.2 * 2 : 1;
+        sim.addDamage(u, std(sim, u, { hp: 0.12 * hits * k }), 'Zone');
+        if (E(u) >= 1) {
+          const ev = [...sim.events].reverse().find((e) => e.unit === a && e.dmg);
+          if (ev) sim.addDamage(u, 0.24 * ev.dmg, 'True DMG');
+        }
+      },
+      allyAttack(sim, u, a, t) { if (a.kind === 'char' || a.memo) this.zoneHit(sim, u, a, t); },
+      afterDamage(sim, u, act) { if (isAtk(act) && act !== 'FollowUp') this.zoneHit(sim, u, u, act); },
+      followUpDone(sim, u) { self(sim, u, 'lamb', { dmg: 0.72 }, 3, { maxStacks: 3 }); },
+      dmgScale(sim, u, act) { return act === 'FollowUp' && E(u) >= 6 ? 1 + 7.29 / (1 + st(sim, u).dmg) : 1; },
+    },
+    // ------------------------------------------------------------------ 1404 Mydei
+    1404: {
+      desc: 'Vendetta: Max HP ×1.5 (E2: ignore 15% DEF; E4: +30% CRIT DMG). Godslayer Be God uses its own multipliers (E1: +30% and every enemy takes the primary target\'s DMG). Bloodied Chiton: +1.2% CRIT Rate per 100 Max HP above 4000 (max 48%).',
+      battleStart(sim, u) {
+        const hp = st(sim, u).HP, s0 = u.stats0 || {};
+        self(sim, u, 'chiton', { cr: Math.min(0.48, 0.012 * Math.floor(Math.max(0, hp - 4000) / 100)) }, Infinity);
+        self(sim, u, 'vendetta', { hpPct: (s, a) => (a.state.vendetta ? 0.5 * (1 + (s0.hpPct || 0)) : 0), defIgnore: (s, a) => (a.state.vendetta && E(a) >= 2 ? 0.15 : 0), cd: (s, a) => (a.state.vendetta && E(a) >= 4 ? 0.3 : 0) }, Infinity);
+      },
+      turnStart(sim, u) { u.state.godNow = !!u.state.god; },
+      dmgAbility(sim, u, act) { return act === 'Enhanced' && u.state.godNow ? 'Godslayer Be God' : undefined; },
+      dmgScale(sim, u, act) {
+        if (act !== 'Enhanced' || !u.state.godNow || E(u) < 1) return 1;
+        const k = n(sim), adj = Math.min(2, k - 1);
+        return (2.8 * 1.3 * k) / (2.8 + 1.68 * adj);
+      },
+      afterDamage(sim, u) { u.state.godNow = false; },
+    },
+    // ------------------------------------------------------------------ 1405 Anaxa
+    1405: {
+      desc: 'Qualitative Disclosure (from his first Skill on): +30% DMG and his Basic ATK / Skill unleash a free extra Skill. Qualitative Shift: ignores 4% DEF per enemy Weakness Type (7 once Disclosed, 3 before). Skill: +20% DMG per enemy. Imperative Hiatus: alone as Erudition, +140% CRIT DMG (2+: allies +50% DMG). E1: first Skill refunds 1 SP; Skill −16% DEF for 2 turns. E2: −20% All-Type RES. E4: Skill +30% ATK for 2 turns (2 stacks). E6: ×1.3 DMG and both Hiatus effects.',
+      battleStart(sim, u) {
+        const er = sim.chars().filter((a) => a.cfg.char.path === 'Erudition').length;
+        if (er === 1 || E(u) >= 6) self(sim, u, 'hiatus', { cd: 1.4 }, Infinity);
+        if (E(u) >= 6 && er < 2) team(sim, 'anaxa', { dmg: 0.5 }, Infinity);
+        if (E(u) >= 2) emod(sim, 'anaxaE2', { res: 0.2 }, Infinity);
+        self(sim, u, 'shift', { defIgnore: (s, a) => (a.state.qd ? 0.28 : 0.12), dmg: (s, a) => (a.state.qd ? 0.3 : 0) }, Infinity);
+      },
+      turnStart(sim, u) { u.state.qdNow = !!u.state.qd; },
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        if (E(u) >= 1) emod(sim, 'anaxaE1', { def: 0.16 }, 2);
+        if (E(u) >= 4) self(sim, u, 'anaxaE4', { atkPct: 0.3 }, 2, { maxStacks: 2 });
+      },
+      dmgScale(sim, u, act) {
+        let f = E(u) >= 6 ? 1.3 : 1;
+        if (act === 'Skill') f *= 1 + 0.2 * n(sim) / (1 + st(sim, u).dmg);
+        return f;
+      },
+      afterDamage(sim, u, act) {
+        if (!u.state.qdNow || (act !== 'Basic' && act !== 'Skill') || u.state.extra) return;
+        u.state.extra = true;
+        if (E(u) >= 4) self(sim, u, 'anaxaE4', { atkPct: 0.3 }, 2, { maxStacks: 2 });
+        sim.dealDamage(u, 'Skill', { label: 'Extra Skill' });
+        u.state.extra = false;
+      },
+    },
   };
 
   window.AVAuditKits = kits;

@@ -199,6 +199,12 @@ DMG_OVERRIDES = {
     ("1317", "Ningu: Demonbane Petalblade"): [{"p": 0, "stat": "atk", "target": "main", "cnt": 2},
                                               {"p": 1, "stat": "atk", "target": "adj", "cnt": 2},
                                               {"p": 2, "stat": "atk", "target": "all"}],
+    ("1401", "Big Brain Energy"): [{"p": 0, "stat": "atk", "target": "main", "cnt": 3}, {"p": 0, "stat": "atk", "target": "adj", "cnt": 2}],
+    ("1401", "Hear Me Out"): [{"p": 0, "stat": "atk", "target": "main", "cnt": 3}, {"p": 0, "stat": "atk", "target": "adj", "cnt": 2},
+                              {"p": 2, "stat": "atk", "target": "all"}],
+    ("1402", "Slash by a Thousandfold Kiss"): [{"p": 0, "stat": "atk", "target": "main"}, {"p": 1, "stat": "atk", "target": "adj"},
+                                               {"p": 2, "stat": "atk", "target": "main"}, {"p": 3, "stat": "atk", "target": "adj"}],
+    ("1403", "Guess Who Lives Here"): [{"p": 0, "stat": "hp", "target": "all"}],  # the Zone's Additional DMG: kit
     ("1312", "G—Gonna Be Late!"): [{"p": 1, "stat": "atk", "target": "main"}],  # per hit; hit count in the kit                                     # Deep Learning buffs later attacks
 }
 
