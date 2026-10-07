@@ -54,9 +54,7 @@
         followUp(sim, u, 10, 'Counter');
       },
     },
-    1003: { // Himeko: Victory Rush needs Weakness Break (not simulated).
-      desc: 'Energy: standard. Victory Rush (on Weakness Break) is not simulated.',
-    },
+    1003: { desc: 'Energy: standard (Victory Rush is in the audit kit).' }, // Himeko
     1004: { // Welt (Novaflare): Skill bounces 5 hits at 6 Energy each; +30 at battle start; Ult +5 more.
       desc: 'Energy: Skill 5 hits × 6. +30 at battle start. Ultimate restores 5 more.',
       energyFor(sim, u, t) { return t === 'Skill' ? 30 : undefined; },

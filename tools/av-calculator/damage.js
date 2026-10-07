@@ -134,8 +134,12 @@
     for (const d of sim.enemyMods || []) { m.vuln += d.vuln || 0; m.def += d.def || 0; m.res += d.res || 0; }
     return m;
   }
-  function common(sim, st) {
+  // Ability types for type-specific buffs: dmg_Ult, cd_FUA, defIgnore_Skill, resPen_Basic...
+  const pick = (st, key, type) => (st[key] || 0) + (type ? st[`${key}_${type}`] || 0 : 0);
+  function common(sim, st, type) {
     const em = enemyMods(sim);
+    st = { ...st, defIgnore: pick(st, 'defIgnore', type), resPen: pick(st, 'resPen', type), cd: pick(st, 'cd', type), cr: pick(st, 'cr', type) };
+    em.vuln += type ? (sim.enemyMods || []).reduce((a, m) => a + ((m.vulnType && m.vulnType[type]) || 0), 0) : 0;
     const L = sim.enemyLevel || 95;
     const defMult = 100 / ((L + 20) * Math.max(0, 1 - em.def - st.defIgnore) + 100);
     const resMult = Math.min(2, Math.max(0.1, 1 - ((sim.enemyRes == null ? 0.2 : sim.enemyRes) - st.resPen - em.res)));
@@ -147,14 +151,22 @@
   const punchlineMult = (p) => 1 + (p * 5) / (p + 240);
 
   // Standard (non-Elation) DMG from explicit multipliers (used by kits for extra hits).
-  function standard(sim, src, mult, extraDmg = 0) {
+  function standard(sim, src, mult, extraDmg = 0, type = null) {
     const st = liveStats(sim, src);
     const base = (mult.atk || 0) * st.ATK + (mult.hp || 0) * st.HP + (mult.def || 0) * st.DEF;
-    return base * (1 + st.dmg + extraDmg) * common(sim, st);
+    return base * (1 + pick(st, 'dmg', type) + extraDmg) * common(sim, st, type);
   }
   function elation(sim, src, mult, punchline) {
     const st = liveStats(sim, src);
-    return ELATION_LEVEL_MULT * mult * (1 + st.elation) * punchlineMult(punchline) * (1 + st.merrymake) * common(sim, st);
+    return ELATION_LEVEL_MULT * mult * (1 + st.elation) * punchlineMult(punchline) * (1 + st.merrymake) * common(sim, st, 'Elation');
+  }
+  // Ability type of an event, for type-specific buffs.
+  function typeOf(act, ab, unit) {
+    if (act === 'FollowUp' || (unit && unit.kind === 'summon' && !unit.memo)) return 'FUA';
+    if (unit && unit.memo) return 'Memo';
+    if (act === 'Elation') return 'Elation';
+    if (act === 'Assist') return 'Skill';
+    return ab ? { Basic: 'Basic', Skill: 'Skill', Ult: 'Ult', Talent: 'FUA' }[ab.type] || null : null;
   }
 
   // Damage of one event. Summons and memosprites hit with their owner's stats.
@@ -170,8 +182,8 @@
     if (ab) {
       applyToughness(sim, src, ab, u);
       const m = multipliers(sim, src, ab);
-      const scale = sim.fire(src, 'dmgScale', act, extra, u) || 1;
-      total += standard(sim, src, m) * scale;
+      const scale = sim.fireProduct(src, 'dmgScale', act, extra, u);
+      total += standard(sim, src, m, 0, typeOf(act, ab, u)) * scale;
       if (m.elation) total += elation(sim, src, m.elation, extra.punchline != null ? extra.punchline : sim.punchline) * scale;
     }
     // Abilities with a DoT clause apply it to the enemies (ticks on enemy turns). Talent DoTs
@@ -188,7 +200,7 @@
       applyDot((src.cfg.char.combat.abilities || []).find((a) => a.type === 'Talent' && a.hits && a.hits.some((h) => h.dot)));
     }
     // Kit extras (Certified Banger Elation hits, additional DMG...): return a DMG amount.
-    const more = sim.fire(src, 'extraDamage', act, extra, u);
+    const more = sim.fireSum(src, 'extraDamage', act, extra, u);
     if (more) total += more;
     return total;
   }
@@ -312,9 +324,6 @@
     1215: { // Hanya: Ult target +60% ATK 2 turns; Burden +30% DMG.
       ult(sim, u) { const tg = sim.targetOf(u); if (tg) sim.addBuff(tg, { id: 'hanyaUlt', stats: { atkPct: 0.6 }, turns: 2 }); },
       action(sim, u, t) { if (t === 'Skill') team(sim, 'burden', { dmg: 0.3 }, 2); },
-    },
-    1009: { // Asta: up to 5 Charging × 14% ATK (assume 3 average after the first turn); Fire +18%.
-      battleStart(sim, u) { team(sim, 'asta', { atkPct: 0.42 }, Infinity); },
     },
     1106: { // Pela: Ult Exposed −40% DEF 2 turns; +10% EHR.
       ult(sim, u) { sim.addEnemyMod({ id: 'exposed', def: 0.4, turns: 2 }); },
@@ -469,7 +478,7 @@
   function dotDamage(sim, d) {
     const st = liveStats(sim, d.src);
     const base = (d.mult.atk || 0) * st.ATK + (d.mult.hp || 0) * st.HP + (d.mult.def || 0) * st.DEF;
-    return base * (1 + st.dmg + (st.dotDmg || 0)) * common(sim, { ...st, cr: 0 }) * (sim.fire(d.src, 'dotScale') || 1);
+    return base * (1 + st.dmg + (st.dotDmg || 0)) * common(sim, { ...st, cr: 0 }, 'DoT') * sim.fireProduct(d.src, 'dotScale', d);
   }
 
   window.AVDamage = { breakDamage, applyToughness, dotDamage, staticStats, liveStats, dealDamage, standard, elation, punchlineMult, kits, ELATION_LEVEL_MULT };

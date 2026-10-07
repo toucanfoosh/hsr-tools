@@ -24,10 +24,10 @@
   const elColor = (el) => `var(--el-${el})`;
   // A character's turn-order kit (effects.js) and energy kit (kits-energy.js) together.
   function kitFor(id) {
-    const a = window.AVEffects.kits[id] || {}, b = (window.AVEnergyKits || {})[id] || {};
+    const a = window.AVEffects.kits[id] || {}, b = (window.AVEnergyKits || {})[id] || {}, c = (window.AVAuditKits || {})[id] || {};
     return {
-      targetLabel: a.targetLabel || b.targetLabel, advance: a.advance, allyTarget: a.allyTarget || b.allyTarget,
-      autoUlt: a.autoUlt || b.autoUlt, options: [...(a.options || []), ...(b.options || [])],
+      targetLabel: a.targetLabel || b.targetLabel || c.targetLabel, advance: a.advance, allyTarget: a.allyTarget || b.allyTarget || c.allyTarget,
+      autoUlt: a.autoUlt || b.autoUlt || c.autoUlt, options: [...(a.options || []), ...(b.options || []), ...(c.options || [])],
     };
   }
   const fmt = (n, d = 1) => (Math.round(n * 10 ** d) / 10 ** d).toFixed(d);

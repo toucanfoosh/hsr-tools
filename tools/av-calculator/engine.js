@@ -18,7 +18,7 @@
   const GAUGE = 10000;
   const EPS = 1e-7;
   // Events that happen on a character's lane but are not one of their turns.
-  const NON_TURN = new Set(['Ultimate', 'Elation', 'FollowUp', 'AhaInstant', 'AhaExtra', 'Countdown', 'Enemy', 'Break']);
+  const NON_TURN = new Set(['Ultimate', 'Elation', 'FollowUp', 'AhaInstant', 'AhaExtra', 'Countdown', 'Enemy', 'Break', 'Frozen']);
 
   function cycleOf(av, firstCycle, cycleLen) {
     if (av <= firstCycle + EPS) return 0;
@@ -209,7 +209,7 @@
     // ---------- energy ----------
     err(u) {
       let e = u.errBase || 0;
-      for (const b of u.buffs) e += (b.err || 0) * (b.stacks || 1);
+      for (const b of u.buffs) e += ((b.err || 0) + ((b.stats && typeof b.stats.err === 'number') ? b.stats.err : 0)) * (b.stacks || 1);
       return e;
     }
     // Returns the Energy actually added. `fixed` gains ignore Energy Regeneration Rate.
@@ -241,6 +241,15 @@
         return (b[1] && b[1].energy) || (k[1] && k[1].energy) || 0;
       }
       return 0;
+    }
+
+    // "When X becomes the target of an ally's ability": kits list single-ally abilities in
+    // `allyTarget` ({ Skill: 1, Ultimate: 1 }).
+    fireTargeted(u, type) {
+      if (u.kind !== 'char') return;
+      if (!u.hooks.some((h) => h.allyTarget && h.allyTarget[type])) return;
+      const tg = this.targetOf(u);
+      if (tg) this.fire(tg, 'targeted', u, type);
     }
 
     // Is this action an attack (for "after an ally attacks" effects)? Support Skills / Ultimates
@@ -316,7 +325,7 @@
     // below their fair share is hit next). A hit gives 10 Energy and triggers "when hit" kits.
     initEnemies() {
       for (let i = 0; i < this.enemyCount; i++) {
-        this.addUnit({ kind: 'enemy', key: `enemy${i}`, lane: 'enemy', name: `Enemy ${i + 1}`, fixedSpd: this.enemySpd, tough: this.enemyToughness, broken: false });
+        this.addUnit({ kind: 'enemy', key: `enemy${i}`, lane: 'enemy', name: `Enemy ${i + 1}`, base: this.enemySpd, pct: 0, flat: 0, tough: this.enemyToughness, broken: false });
       }
     }
     enemies() { return this.units.filter((u) => u.kind === 'enemy' && u.alive); }
@@ -366,6 +375,37 @@
         });
       }
     }
+    // ---- debuffs on enemies
+    // Deterministic effect chance: base × (1 + EHR) × (1 − 20% Effect RES), accumulated so e.g.
+    // a 50% chance succeeds every other try.
+    chance(u, key, base) {
+      const ehr = u && u.stats0 && window.AVDamage ? window.AVDamage.liveStats(this, u).ehr : 0;
+      const p = Math.min(1, base * (1 + ehr) * 0.8);
+      u.state.chanceAcc = u.state.chanceAcc || {};
+      const acc = (u.state.chanceAcc[key] || 0) + p;
+      if (acc >= 1 - 1e-9) { u.state.chanceAcc[key] = acc - 1; return true; }
+      u.state.chanceAcc[key] = acc;
+      return false;
+    }
+    // Targets of an enemy-side effect: 'main' (first enemy), 'blast' (main + adjacent), 'all'.
+    enemyTargets(scope = 'all') {
+      const es = this.enemies();
+      return scope === 'main' ? es.slice(0, 1) : scope === 'blast' ? es.slice(0, 3) : es;
+    }
+    // SPD reduction (Slow) on enemies: a buff with negative pct on each targeted enemy.
+    slowEnemies(id, pct, turns, scope = 'all') {
+      for (const e of this.enemyTargets(scope)) this.addBuff(e, { id, pct: -pct, turns, debuff: true });
+    }
+    delayEnemies(pct, scope = 'all') { for (const e of this.enemyTargets(scope)) this.delay(e, pct); }
+    freezeEnemy(e, src, mult) { if (e && e.alive) e.frozen = { src, mult }; }
+    isSlowed(e = this.enemies()[0]) { return !!(e && e.buffs.some((b) => b.debuff && (b.pct || 0) < 0)); }
+    // Number of debuffs on an enemy (DEF / RES / vulnerability mods, DoTs, slows, Freeze).
+    debuffCount(e = this.enemies()[0]) {
+      const mods = (this.enemyMods || []).filter((m) => m.def || m.res || m.vuln || m.vulnType || m.debuff).length;
+      const slows = e ? e.buffs.filter((b) => b.debuff).length : 0;
+      return mods + (this.dots || []).length + slows + (e && e.frozen ? 1 : 0);
+    }
+
     // How many enemies an ability hits (for "per target hit" effects).
     targetsHit(u, act) {
       const n = Math.max(1, this.enemyCount);
@@ -473,6 +513,17 @@
     fireAll(name, source, ...args) {
       for (const u of [...this.units]) if (u.alive && u !== source) this.fire(u, name, source, ...args);
     }
+    // Hooks whose results combine: multiply (damage scales) or add (extra damage).
+    fireProduct(u, name, ...args) {
+      let r = 1;
+      for (const h of u.hooks) if (h[name]) { const v = h[name](this, u, ...args); if (typeof v === 'number') r *= v; }
+      return r;
+    }
+    fireSum(u, name, ...args) {
+      let r = 0;
+      for (const h of u.hooks) if (h[name]) { const v = h[name](this, u, ...args); if (typeof v === 'number') r += v; }
+      return r;
+    }
     // Like fireAll but includes the source (team-wide resources: SP, Punchline...).
     fireEvery(name, source, ...args) {
       for (const u of [...this.units]) if (u.alive) this.fire(u, name, source, ...args);
@@ -552,9 +603,22 @@
       }
 
       if (u.kind === 'enemy') {
+        this.tickBuffs(u, 'start');
+        if (u.frozen) {
+          // Frozen: the turn is skipped (Freeze DMG ticks), then the next action is advanced 50%.
+          const fz = u.frozen; u.frozen = null;
+          this.record(u, 'Frozen');
+          this.current = null;
+          if (fz.src && window.AVDamage && fz.mult) this.addDamage(fz.src, window.AVDamage.standard(this, fz.src, fz.mult), 'Freeze');
+          this.tickBuffs(u, 'end');
+          u.dist = GAUGE; u.tb = u.defaultTb;
+          this.applyAdvance(u, 0.5);
+          return;
+        }
         this.record(u, 'Enemy');
         this.current = null;
         this.enemyTurn(u);
+        this.tickBuffs(u, 'end');
         u.dist = GAUGE; u.tb = u.defaultTb;
         return;
       }
@@ -590,7 +654,9 @@
         this.gainEnergy(u, this.actionEnergy(u, type));
       }
       this.fire(u, 'action', type);
+      this.fireTargeted(u, type);
       ev.dmg = this.dealDamage(u, type);
+      this.fire(u, 'afterDamage', type);
       this.fireAll('allyAction', u, type);
       if (this.isAttack(u, type)) this.fireAll('allyAttack', u, type);
       this.tickBuffs(u, 'end');
@@ -698,7 +764,9 @@
       if (spent) u.energy -= spent;
       const ev = this.record(u, 'Ultimate', { n: u.actions, spent, ...extra });
       this.fire(u, 'ult', { spent });
+      this.fireTargeted(u, 'Ultimate');
       ev.dmg = this.dealDamage(u, 'Ult');
+      this.fire(u, 'afterDamage', 'Ult');
       this.fireAll('allyUlt', u, { spent });
       if (this.isAttack(u, 'Ult')) this.fireAll('allyAttack', u, 'Ult');
       this.gainEnergy(u, this.abilityEnergy(u, 'Ult'));

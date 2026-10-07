@@ -28,6 +28,8 @@
     if (kit) out.push({ src: 'kit', label: ch.name, ...kit });
     const ek = energyKits[ch.id];
     if (ek) out.push({ src: 'energy', label: ch.name, ...ek });
+    const ak = window.AVAuditKits && window.AVAuditKits[ch.id];
+    if (ak) out.push({ src: 'audit', label: ch.name, ...ak });
     const dk = window.AVDamage && window.AVDamage.kits[ch.id];
     if (dk) out.push({ src: 'damage', label: ch.name, ...dk });
     const lc = LCS[slot.lcId];
