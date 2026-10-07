@@ -108,7 +108,8 @@ def yatta_kit(y):
 
 
 # ---- damage clauses: "#1[i]% of X's ATK to ..." / "#3[i]% Fire Elation DMG to ..." ----
-_OF = r"of\s+(?:his|her|its|their|this unit's|[^\n]{0,48}?'s)\s+(ATK|Max HP|DEF)"
+# "of X's ATK", "of ATK" (memosprites), "of "Summer Songbirds'" Max HP".
+_OF = r"of\s+(?:(?:his|her|its|their|this unit's|[^\n]{0,48}?(?:'s|'\"))\s+)?(ATK|Max HP|DEF)"
 DMG_CLAUSE = re.compile(r"#(\d+)\[[if]\d?\]%\s+" + _OF, re.S)
 ELATION_CLAUSE = re.compile(r"#(\d+)\[[if]\d?\]%\s+(?:\w+\s+)?Elation DMG", re.S)
 STAT_KEY = {"ATK": "atk", "Max HP": "hp", "DEF": "def"}
@@ -215,7 +216,11 @@ def combat_data(y, cid):
     abilities, skills, by_skill_id = [], {}, {}
     type_map = {"Basic": "Normal", "Skill": "BPSkill", "Ult": "Ultra", "Talent": "Talent", "Elation": "Elation"}
     for group in ("mainSkills", "servantSkills"):
-        for point in (traces.get(group) or {}).values():
+        pts = traces.get(group) or {}
+        # Memosprite abilities sit one level deeper: {"skills": {point id: {...}}}.
+        if isinstance(pts.get("skills"), dict):
+            pts = pts["skills"]
+        for point in pts.values():
             for sid, sk in (point.get("skillList") or {}).items():
                 t = ABILITY_TYPE.get(sk.get("type"), sk.get("type"))
                 sp = sk.get("skillPoints") or {}
