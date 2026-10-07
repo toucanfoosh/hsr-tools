@@ -72,7 +72,7 @@
       },
       action(sim, u, t) {
         u.state.lastAct = t;
-        if (isAtk(t) && sim.chance(u, 'burn', 0.5)) sim.addDot({ id: `${u.key}:burn`, src: u, mult: { atk: 0.3 }, turns: 2 });
+        if (isAtk(t) && sim.chance(u, 'burn', 0.5)) sim.addDot({ id: `${u.key}:burn`, src: u, mult: { atk: 0.3 }, turns: 2, targets: sim.dotTargets(AD().abilityFor(sim, u, t)) });
         this.victory(sim, u);
       },
       allyAttack(sim, u) { this.victory(sim, u); },
@@ -137,7 +137,8 @@
         if (E(u) >= 2) team(sim, 'kafkaE2', { dotDmg: 0.33 }, Infinity);
       },
       // One Shock DoT (same id as the one her Ultimate applies); E6 boost via dotScale / dotTurns.
-      shock(sim, u) { sim.addDot({ id: `${u.key}:Twilight Trill`, src: u, mult: { atk: 2.9 }, turns: this.dotTurns(sim, u) }); },
+      shock(sim, u, targets = 1) { sim.addDot({ id: `${u.key}:Twilight Trill`, src: u, mult: { atk: 2.9 }, turns: this.dotTurns(sim, u), targets: Math.max(targets, this.shockTargets(sim)) }); },
+      shockTargets(sim) { const d = (sim.dots || []).find((x) => x.id.endsWith(':Twilight Trill')); return d ? d.targets : 1; },
       dotTurns(sim, u) { return 2 + (E(u) >= 6 ? 1 : 0); },
       dotScale(sim, u, d) { return E(u) >= 6 && d && d.id === `${u.key}:Twilight Trill` ? (2.9 + 1.56) / 2.9 : 1; },
       detonate(sim, u, main, adj) {
@@ -348,14 +349,14 @@
     // ------------------------------------------------------------------ 1103 Serval
     1103: {
       desc: 'Skill Shock: 100% base chance (80% + 20%) on the target and adjacent. Ultimate extends Shock by 2 turns (E4: Shocks everyone). Talent: after attacking, 72% ATK Additional DMG to every Shocked enemy (E2: +4 Energy). E1: Basic hits an adjacent enemy for 60%. E6: +30% DMG vs Shocked.',
-      shocked(sim, u) { return (sim.dots || []).some((d) => d.src === u); },
+      shocked(sim, u) { return (sim.dots || []).filter((d) => d.src === u).reduce((a, d) => Math.max(a, d.targets), 0); },
       ult(sim, u) {
         (sim.dots || []).filter((d) => d.src === u).forEach((d) => { d.turns += 2; });
-        if (E(u) >= 4 && !this.shocked(sim, u)) sim.addDot({ id: `${u.key}:Lightning Flash`, src: u, mult: { atk: 1.04 }, turns: 2 });
+        if (E(u) >= 4 && !this.shocked(sim, u)) sim.addDot({ id: `${u.key}:Lightning Flash`, src: u, mult: { atk: 1.04 }, turns: 2, targets: n(sim) });
       },
       extraDamage(sim, u, act) {
         let d = 0;
-        if (isAtk(act) && this.shocked(sim, u)) { d += std(sim, u, { atk: 0.72 }) * Math.min(3, n(sim)); if (E(u) >= 2) G(sim, u, 4); }
+        if (isAtk(act) && this.shocked(sim, u)) { d += std(sim, u, { atk: 0.72 }) * this.shocked(sim, u); if (E(u) >= 2) G(sim, u, 4); }
         if (E(u) >= 1 && act === 'Basic' && n(sim) > 1) d += std(sim, u, { atk: 0.6 }, 'Basic');
         return d;
       },
@@ -694,6 +695,231 @@
         if (E(u) >= 1 && e && e.frozen) d += std(sim, u, { atk: 0.6 });
         return d;
       },
+    },
+
+    // ------------------------------------------------------------------ 1210 Guinaifen
+    1210: {
+      desc: 'Skill Burns the target and adjacent enemies; High Poles: Basic ATK has an 80% base chance to Burn too. Ultimate: each Burn instantly deals 92% of its DMG. Firekiss: each Burn tick adds a 7% vulnerability stack (3 turns, max 3; E6: 4). Walking on Knives: +20% DMG vs Burned. E2: Burn multiplier +40% when reapplied to a Burned enemy. E4: +2 Energy per Burn tick. (E1\'s Effect RES shred only raises hit chances; the sim\'s chance roll uses the base chance.)',
+      burn(sim, u) { return (sim.dots || []).find((d) => d.src === u); },
+      battleStart(sim, u) { u.state.kiss = 0; },
+      action(sim, u, t) {
+        if (E(u) >= 2 && (t === 'Basic' || t === 'Skill') && this.burn(sim, u)) u.state.e2 = true;
+        if (t === 'Basic' && sim.chance(u, 'highPoles', 0.8)) {
+          const old = this.burn(sim, u);
+          sim.addDot({ id: `${u.key}:Blazing Welcome`, src: u, mult: { atk: window.AVEffects.P(u, 'BPSkill', 3) }, turns: 2, targets: old ? old.targets : 1 });
+        }
+      },
+      afterDamage(sim, u, act) {
+        if (act !== 'Ult') return;
+        const d = this.burn(sim, u);
+        if (d) sim.addDamage(u, 0.92 * AD().dotDamage(sim, d) * d.targets, 'DoT detonation');
+      },
+      dotScale(sim, u, d) { return u.state.e2 && d && d.src === u ? (window.AVEffects.P(u, 'BPSkill', 3) + 0.4) / window.AVEffects.P(u, 'BPSkill', 3) : 1; },
+      enemyTurnStart(sim, u, e) {
+        const d = this.burn(sim, u);
+        if (!d || sim.enemies().indexOf(e) >= d.targets) return;
+        if (E(u) >= 4) G(sim, u, 2);
+        u.state.kiss = Math.min(E(u) >= 6 ? 4 : 3, u.state.kiss + 1);
+        emod(sim, 'firekiss', { vuln: 0.07 * u.state.kiss * d.targets / n(sim) }, 3);
+      },
+      dmgScale(sim, u) { return this.burn(sim, u) ? 1 + 0.2 / (1 + st(sim, u).dmg) : 1; },
+    },
+    // ------------------------------------------------------------------ 1211 Bailu
+    1211: {
+      desc: 'Skill heals the target, then 2 more allies; Qihuang Analects: overhealed allies +10% Max HP for 2 turns. Ultimate: Invigoration for 2 turns. E1: +8 Energy to each ally when their Invigoration ends (assumed at full HP). E4: each Skill heal gives +10% DMG for 2 turns (3 stacks).',
+      allyTarget: { Skill: 1 },
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        const tg = sim.targetOf(u) || u;
+        const order = [tg, ...sim.chars().filter((a) => a !== tg)];
+        for (const a of order.slice(0, 3)) {
+          sim.addBuff(a, { id: 'qihuang', stats: { hpPct: 0.1 }, turns: 2 });
+          if (E(u) >= 4) sim.addBuff(a, { id: 'bailuE4', stats: { dmg: 0.1 }, turns: 2, maxStacks: 3 });
+        }
+      },
+      ult(sim, u) {
+        u.state.inv = u.state.inv || new Set();
+        for (const a of sim.chars()) { sim.addBuff(a, { id: 'invigoration', turns: 2 }); u.state.inv.add(a); }
+      },
+      checkInv(sim, u, a) {
+        if (E(u) < 1 || !u.state.inv || !u.state.inv.has(a) || sim.hasBuff(a, 'invigoration')) return;
+        u.state.inv.delete(a);
+        G(sim, a, 8);
+      },
+      turnEnd(sim, u) { this.checkInv(sim, u, u); },
+      allyTurnEnd(sim, u, a) { this.checkInv(sim, u, a); },
+    },
+    // ------------------------------------------------------------------ 1212 Jingliu
+    1212: {
+      desc: 'Spectral Transmigration: +50% CRIT Rate; Deathrealm +20% Ultimate DMG; Moonlight +44% CRIT DMG per stack (E4: +64%, max 5), from teammates\' HP she consumes per attack (3) and allies being hit. Every 20 times allies take DMG or lose HP: +1 Syzygy. Frost Wraith: gaining Syzygy at the cap makes the next attack ignore 25% DEF. E1: Ultimate / Enhanced Skill +36% CRIT DMG for 1 turn and an extra 80% Max HP hit. E2: after Ultimate, the next Enhanced Skill +80% DMG. E6: +30% Ice RES PEN in Spectral Transmigration.',
+      battleStart(sim, u) { u.state.hpLoss = 0; },
+      spectralBuffs(sim, u) {
+        if (sim.hasBuff(u, 'spectral')) return;
+        self(sim, u, 'spectral', { cr: 0.5, dmg_Ult: 0.2, ...(E(u) >= 6 ? { resPen: 0.3 } : {}) }, Infinity);
+      },
+      moon(sim, u, k) {
+        for (let i = 0; i < k; i++) self(sim, u, 'moonlight', { cd: 0.44 + (E(u) >= 4 ? 0.2 : 0) }, Infinity, { maxStacks: 5 });
+      },
+      loss(sim, u, k) {
+        u.state.hpLoss += k;
+        while (u.state.hpLoss >= 20) { u.state.hpLoss -= 20; window.AVEffects.kits[1212].gain(sim, u); }
+      },
+      action(sim, u, t) {
+        if (u.state.spectral && isAtk(t)) {
+          this.spectralBuffs(sim, u);
+          const mates = sim.allies(u).length;
+          this.moon(sim, u, mates);
+          this.loss(sim, u, mates);
+        }
+        if (E(u) >= 1 && t === 'Enhanced') self(sim, u, 'jingliuE1', { cd: 0.36 }, 1);
+        if (u.state.wraith && isAtk(t)) { u.state.wraith = false; self(sim, u, 'frostWraith', { defIgnore: 0.25 }, Infinity); }
+      },
+      ult(sim, u) {
+        if (u.state.spectral) this.spectralBuffs(sim, u);
+        if (E(u) >= 1) self(sim, u, 'jingliuE1', { cd: 0.36 }, 1);
+        if (u.state.wraith) { u.state.wraith = false; self(sim, u, 'frostWraith', { defIgnore: 0.25 }, Infinity); }
+      },
+      syzygyGained(sim, u, capped) { if (capped) u.state.wraith = true; },
+      allyHit(sim, u) { if (u.state.spectral) this.moon(sim, u, 1); this.loss(sim, u, 1); },
+      hit(sim, u) { if (u.state.spectral) this.moon(sim, u, 1); this.loss(sim, u, 1); },
+      extraDamage(sim, u, act) { return E(u) >= 1 && (act === 'Ult' || act === 'Enhanced') ? std(sim, u, { hp: 0.8 }, act === 'Ult' ? 'Ult' : 'Skill') : 0; },
+      dmgScale(sim, u, act) {
+        if (E(u) >= 2 && act === 'Enhanced' && u.state.e2) { u.state.e2 = false; return 1 + 0.8 / (1 + st(sim, u).dmg); }
+        return 1;
+      },
+      afterDamage(sim, u, act) {
+        if (act === 'Ult') u.state.e2 = true;
+        sim.removeBuff(u, 'frostWraith');
+        if (!u.state.spectral) { sim.removeBuff(u, 'spectral'); sim.removeBuff(u, 'moonlight'); }
+      },
+    },
+    // ------------------------------------------------------------------ 1213 Dan Heng • Imbibitor Lunae
+    1213: {
+      desc: 'Dracore Libre: each turn he enhances his Basic ATK up to the chosen level (1–3 SP, paid with Squama Sacrosancta first): Transcendence (3 hits), Divine Spear (5), Fulgurant Leap (7). Ultimate gives 2 Squama (E2: 3, max 3). Righteous Heart: +10% DMG per hit this turn (max 6; E1: 2 per hit, max 10). Outroar: +12% CRIT DMG before each hit from the 4th (max 4; E4: kept into the next turn). Jolt Anew: +24% CRIT DMG (enemy assumed Imaginary-weak). E6: each teammate Ultimate gives his next Fulgurant Leap +20% Imaginary RES PEN (3 stacks).',
+      options: [{ key: 'lvl', label: 'Enhancement level', type: 'select', def: '3', choices: [['3', 'Fulgurant Leap (3 SP)'], ['2', 'Divine Spear (2 SP)'], ['1', 'Transcendence (1 SP)'], ['0', 'Beneficent Lotus (Basic)']] }],
+      NAMES: ['Beneficent Lotus', 'Transcendence', 'Divine Spear', 'Fulgurant Leap'],
+      HITS: [2, 3, 5, 7],
+      battleStart(sim, u) { u.state.squama = 0; u.state.outroar = 0; u.state.e6 = 0; self(sim, u, 'joltAnew', { cd: 0.24 }, Infinity); },
+      actionType(sim, u) {
+        const lvl = Math.max(0, Math.min(+O(u, 'lvl') || 0, Math.floor(sim.sp + u.state.squama + 1e-9)));
+        u.state.lvl = lvl;
+        return lvl > 0 ? 'Enhanced' : 'Basic';
+      },
+      spCost(sim, u, t) {
+        if (t !== 'Enhanced') return undefined;
+        u.state.useSq = Math.min(u.state.squama, u.state.lvl);
+        return u.state.lvl - u.state.useSq;
+      },
+      energyFor(sim, u, t) { return t === 'Enhanced' ? [20, 30, 35, 40][u.state.lvl] : undefined; },
+      dmgAbility(sim, u, act) { return act === 'Enhanced' ? this.NAMES[u.state.lvl] : undefined; },
+      action(sim, u, t) {
+        if (t === 'Enhanced') { u.state.squama -= u.state.useSq || 0; u.state.useSq = 0; }
+        if (E(u) >= 6 && t === 'Enhanced' && u.state.lvl === 3 && u.state.e6 > 0) { self(sim, u, 'dhilE6', { resPen: 0.2 * u.state.e6 }, Infinity); u.state.e6 = 0; }
+      },
+      ult(sim, u) { u.state.squama = Math.min(3, u.state.squama + 2 + (E(u) >= 2 ? 1 : 0)); },
+      allyUlt(sim, u) { if (E(u) >= 6) u.state.e6 = Math.min(3, u.state.e6 + 1); },
+      dmgScale(sim, u, act) {
+        const hits = act === 'Ult' ? 3 : act === 'Basic' ? 2 : act === 'Enhanced' ? this.HITS[u.state.lvl] : 0;
+        if (!hits) return 1;
+        const s = st(sim, u), per = E(u) >= 1 ? 2 : 1, cap = E(u) >= 1 ? 10 : 6;
+        const cr = Math.min(1, s.cr), crit = (k) => (1 + cr * (s.cd + 0.12 * k)) / (1 + cr * s.cd);
+        const start = E(u) >= 4 ? u.state.outroar : 0;
+        const spear = act === 'Enhanced' && u.state.lvl >= 2;
+        let f = 0, roar = start;
+        for (let i = 0; i < hits; i++) {
+          if (spear && i >= 3) roar = Math.min(4, roar + 1);
+          f += (1 + s.dmg + 0.1 * Math.min(cap, i * per)) / (1 + s.dmg) * crit(roar);
+        }
+        if (act !== 'Ult') u.state.outroar = spear ? roar : 0;
+        return f / hits;
+      },
+      afterDamage(sim, u) { sim.removeBuff(u, 'dhilE6'); },
+    },
+    // ------------------------------------------------------------------ 1214 Xueyi
+    1214: {
+      desc: 'Clairvoyant Loom: DMG +100% of Break Effect (max 240%). Ultimate: up to +60% DMG by the Toughness it removes, +10% when the target has ≥50% Toughness. E1: follow-up +40% DMG. E4: Ultimate +40% Break Effect for 2 turns.',
+      action(sim, u) { const e = sim.enemies()[0]; u.state.preTough = e && !e.broken ? e.tough : 0; },
+      ult(sim, u) { const e = sim.enemies()[0]; u.state.preTough = e && !e.broken ? e.tough : 0; if (E(u) >= 4) self(sim, u, 'xueyiE4', { be: 0.4 }, 2); },
+      dmgScale(sim, u, act) {
+        const s = st(sim, u);
+        let f = (1 + s.dmg + Math.min(2.4, s.be || 0)) / (1 + s.dmg);
+        if (act === 'Ult') {
+          const ab = u.cfg.char.combat.abilities.find((a) => a.type === 'Ult');
+          const ut = ((ab && ab.tough && ab.tough.one) || 120) / 3;
+          const pre = u.state.preTough || 0;
+          f *= 1 + 0.6 * Math.min(1, pre / ut) + (pre >= 0.5 * (sim.enemyToughness || 1) ? 0.1 : 0);
+        }
+        if (E(u) >= 1 && act === 'FollowUp') f *= 1 + 0.4 / (1 + s.dmg);
+        return f;
+      },
+    },
+    // ------------------------------------------------------------------ 1215 Hanya
+    1215: {
+      desc: 'Sanction: an ally using Basic ATK / Skill / Ultimate on the Burdened enemy gets +30% DMG for 2 turns (E6: 40%). Scrivener: the ally who triggers Burden\'s SP recovery +10% ATK for 1 turn. E4: Ultimate lasts 1 more turn.',
+      sanction(sim, u, a, t) {
+        if (!u.state.burdenOn || !['Basic', 'Skill', 'Ult', 'Enhanced'].includes(t)) return;
+        sim.addBuff(a, { id: 'sanction', stats: { dmg: E(u) >= 6 ? 0.4 : 0.3 }, turns: 2 });
+        if (u.state.burden !== u.state.lastBurden) sim.addBuff(a, { id: 'scrivener', stats: { atkPct: 0.1 }, turns: 1 });
+        u.state.lastBurden = u.state.burden;
+        if (!(u.state.burden > 0)) u.state.burdenOn = false;
+      },
+      action(sim, u, t) { if (t === 'Skill') { u.state.burdenOn = true; u.state.lastBurden = 2; } },
+      afterDamage(sim, u, act) {
+        if (act === 'Basic' || act === 'Skill') this.sanction(sim, u, u, act);
+        if (act === 'Ult' && E(u) >= 4) { const tg = sim.targetOf(u); if (tg) tg.buffs.filter((b) => b.id === 'hanya' || b.id === 'hanyaUlt').forEach((b) => { b.turns = 3; }); }
+      },
+      allyAttack(sim, u, a, t) { if (a.kind === 'char') this.sanction(sim, u, a, t); },
+    },
+    // ------------------------------------------------------------------ 1217 Huohuo
+    1217: {
+      desc: 'Divine Provision: 2 turns at battle start, 3 after Skill / Ultimate (E1: 4), counting down at her turn start; while up, each ally turn start or Ultimate triggers a heal (6 per Provision), +1 Energy each (Stress Reaction). Ultimate: teammates +40% ATK for 2 turns (+24% more with 160+ Max Energy). E1: all allies +12% SPD while Provision is up. E6: each heal gives +50% DMG for 2 turns.',
+      battleStart(sim, u) { this.provide(sim, u, 2); },
+      provide(sim, u, turns) {
+        u.state.prov = turns; u.state.heals = 6;
+        if (E(u) >= 1) sim.chars().forEach((a) => sim.addBuff(a, { id: 'huohuoE1', pct: 0.12, turns, tick: 'owner', owner: u }));
+      },
+      turnStart(sim, u) { if (u.state.prov > 0) u.state.prov -= 1; this.heal(sim, u, u); },
+      action(sim, u, t) { if (t === 'Skill') this.provide(sim, u, E(u) >= 1 ? 4 : 3); },
+      ult(sim, u) {
+        sim.allies(u).forEach((a) => sim.addBuff(a, { id: 'huohuoUlt', stats: { atkPct: 0.4 + (a.maxEnergy >= 160 ? 0.24 : 0) }, turns: 2 }));
+        this.heal(sim, u, u);
+        this.provide(sim, u, E(u) >= 1 ? 4 : 3);
+      },
+      heal(sim, u, a) {
+        if (!(u.state.prov > 0) || !(u.state.heals > 0)) return;
+        u.state.heals -= 1;
+        G(sim, u, 1);
+        if (E(u) >= 6) sim.addBuff(a, { id: 'huohuoE6', stats: { dmg: 0.5 }, turns: 2 });
+      },
+      allyTurnStart(sim, u, a) { if (a.kind === 'char') this.heal(sim, u, a); },
+      allyUlt(sim, u, a) { if (a.kind === 'char') this.heal(sim, u, a); },
+    },
+    // ------------------------------------------------------------------ 1218 Jiaoqiu
+    1218: {
+      desc: 'Ashen Roast: +1 stack per Basic / Skill / Ultimate hit (E1: +2; max 5, E6: 9), 2 turns; 15% vulnerability +5% per extra stack, and it counts as Burn (180% ATK DoT; E2: +300%). Ultimate: sets stacks to the highest, then a Zone for 3 of his turns: +15% Ultimate DMG taken, 60% base chance of +1 stack when an enemy acts (6 times). Hearth Kindle: +60% ATK per 15% Effect Hit Rate above 80% (max 240%). E1: allies +40% DMG vs Roasted enemies. E6: −3% All-Type RES per stack.',
+      battleStart(sim, u) {
+        u.state.roast = 0; u.state.zone = 0;
+        const ehr = st(sim, u).ehr || 0;
+        const k = Math.min(4, Math.max(0, Math.floor((ehr - 0.8 + 1e-9) / 0.15)));
+        if (k) self(sim, u, 'hearthKindle', { atkPct: 0.6 * k }, Infinity);
+      },
+      roast(sim, u, add) {
+        u.state.roast = Math.min(E(u) >= 6 ? 9 : 5, u.state.roast + add);
+        const s = u.state.roast;
+        emod(sim, 'ashenRoast', { vuln: 0.15 + 0.05 * (s - 1), ...(E(u) >= 6 ? { res: 0.03 * s } : {}) }, 2);
+        if (E(u) >= 1) team(sim, 'jiaoqiuE1', { dmg: 0.4 }, Infinity);
+      },
+      action(sim, u, t) { if (t === 'Basic' || t === 'Skill') this.roast(sim, u, 1 + (E(u) >= 1 ? 1 : 0)); },
+      ult(sim, u) {
+        u.state.zone = 3; u.state.zoneProcs = 6;
+        emod(sim, 'jiaoqiuZone', { vulnType: { Ult: 0.15 } }, 3);
+        this.roast(sim, u, 1 + (E(u) >= 1 ? 1 : 0));
+      },
+      turnStart(sim, u) { if (u.state.zone > 0 && --u.state.zone === 0) sim.enemyMods = (sim.enemyMods || []).filter((m) => m.id !== 'jiaoqiuZone'); },
+      enemyTurnStart(sim, u) {
+        if (u.state.zone > 0 && u.state.zoneProcs > 0 && sim.chance(u, 'jqZone', 0.6)) { u.state.zoneProcs -= 1; this.roast(sim, u, 1); }
+      },
+      dotScale(sim, u, d) { return E(u) >= 2 && d && d.id.endsWith(':Quartet Finesse, Octave Finery') ? (1.8 + 3) / 1.8 : 1; },
     },
   };
 

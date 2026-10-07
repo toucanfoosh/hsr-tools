@@ -192,12 +192,14 @@
     }
     // Abilities with a DoT clause apply it to the enemies (ticks on enemy turns). Talent DoTs
     // (Arcana, Ashen Roast, Wind Shear...) are applied by the character's attacks.
+    // A DoT lands on the enemies this attack hit.
+    const hitCount = sim.dotTargets(ab);
     const applyDot = (a) => {
       if (!a || !a.hits.some((h) => h.dot)) return;
       const row = a.params[abilityLevel(src, a) - 1];
       const mult = { atk: 0, hp: 0, def: 0 };
       for (const h of a.hits) if (h.dot && h.stat in mult) mult[h.stat] += row[h.p] || 0;
-      sim.addDot({ id: `${src.key}:${a.name}`, src, mult, turns: sim.fire(src, 'dotTurns', a) || 2 });
+      sim.addDot({ id: `${src.key}:${a.name}`, src, mult, turns: sim.fire(src, 'dotTurns', a) || 2, targets: hitCount });
     };
     applyDot(ab);
     if (u === src && ['Basic', 'Skill', 'Enhanced', 'Ult'].includes(act) && sim.isAttack(u, act)) {
@@ -325,9 +327,8 @@
       action(sim, u, t) { if (t === 'Skill') { const tg = sim.targetOf(u); if (tg) sim.addBuff(tg, { id: 'benediction', stats: { atk: Math.min(0.5 * liveStats(sim, tg).ATK, 0.25 * liveStats(sim, u).ATK) }, turns: 3 }); } },
       ult(sim, u) { const tg = sim.targetOf(u); if (tg) sim.addBuff(tg, { id: 'tingyunUlt', stats: { dmg: 0.5 }, turns: 2 }); },
     },
-    1215: { // Hanya: Ult target +60% ATK 2 turns; Burden +30% DMG.
+    1215: { // Hanya: Ult target +60% ATK 2 turns (Sanction: audit kit).
       ult(sim, u) { const tg = sim.targetOf(u); if (tg) sim.addBuff(tg, { id: 'hanyaUlt', stats: { atkPct: 0.6 }, turns: 2 }); },
-      action(sim, u, t) { if (t === 'Skill') team(sim, 'burden', { dmg: 0.3 }, 2); },
     },
     1106: { // Pela: Ult Exposed −40% DEF 2 turns; +10% EHR.
       ult(sim, u) { sim.addEnemyMod({ id: 'exposed', def: 0.4, turns: 2 }); },
@@ -338,11 +339,6 @@
         if (t === 'Basic' || t === 'Skill') sim.addEnemyMod({ id: 'swBug', def: 0.12, turns: 4 });
       },
       ult(sim, u) { sim.addEnemyMod({ id: 'swUlt', def: 0.45, turns: 3 }); },
-    },
-    1218: { // Jiaoqiu: Ashen Roast vuln 15% +5%/stack (to 35%); Ult zone +15% Ultimate DMG taken.
-      action(sim, u, t) { if (t === 'Basic' || t === 'Skill') { u.state.roast = Math.min(5, (u.state.roast || 0) + 1); this.roast(sim, u); } },
-      ult(sim, u) { u.state.roast = Math.max(u.state.roast || 1, 1); this.roast(sim, u); },
-      roast(sim, u) { sim.addEnemyMod({ id: 'ashenRoast', vuln: 0.15 + 0.05 * (u.state.roast - 1), turns: 2 }); },
     },
     1403: { // Tribbie: Numinosity +24% RES PEN; Zone +30% DMG taken (2 turns).
       action(sim, u, t) { if (t === 'Skill') team(sim, 'numinosity', { resPen: 0.24 }, 3, { tick: 'owner', owner: u }); },
@@ -485,5 +481,5 @@
     return base * (1 + st.dmg + (st.dotDmg || 0)) * common(sim, { ...st, cr: 0 }, 'DoT') * sim.fireProduct(d.src, 'dotScale', d);
   }
 
-  window.AVDamage = { breakDamage, applyToughness, dotDamage, staticStats, liveStats, dealDamage, standard, elation, punchlineMult, kits, ELATION_LEVEL_MULT };
+  window.AVDamage = { abilityFor, breakDamage, applyToughness, dotDamage, staticStats, liveStats, dealDamage, standard, elation, punchlineMult, kits, ELATION_LEVEL_MULT };
 })();

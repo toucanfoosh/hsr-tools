@@ -540,18 +540,25 @@
       },
     },
     1212: { // Jingliu
-      desc: 'Skill/Ultimate: +1 Syzygy. At 2 Syzygy enters Spectral Transmigration and advances 100%; there only the enhanced Skill is used (−1 Syzygy each) until 0. Trace: Transcendent Flash advances next action 10%.',
+      desc: 'Skill/Ultimate: +1 Syzygy. At 2 Syzygy enters Spectral Transmigration (+1 Syzygy, max 4; E6: +3, max 5) and advances 100%; there only the enhanced Skill is used (−1 Syzygy each) until 0.',
       battleStart(sim, u) { u.state.syz = 0; },
       actionType(sim, u) { return u.state.spectral ? 'Enhanced' : undefined; },
+      // Novaflare: Syzygy caps at 4 (E6: 5 in Spectral Transmigration); entering adds 1 (E6: 3).
       gain(sim, u) {
-        u.state.syz = Math.min(3, u.state.syz + 1);
-        if (!u.state.spectral && u.state.syz >= 2) { u.state.spectral = true; sim.actNow(u); }
+        const cap = u.state.spectral && E(u) >= 6 ? 5 : 4;
+        const capped = u.state.syz >= cap;
+        u.state.syz = Math.min(cap, u.state.syz + 1);
+        if (!u.state.spectral && u.state.syz >= 2) {
+          u.state.spectral = true;
+          u.state.syz = Math.min(E(u) >= 6 ? 5 : 4, u.state.syz + 1 + (E(u) >= 6 ? 2 : 0));
+          sim.actNow(u);
+        }
+        sim.fire(u, 'syzygyGained', capped);
       },
       action(sim, u, t) {
         if (t === 'Enhanced') {
           if (--u.state.syz <= 0) { u.state.syz = 0; u.state.spectral = false; }
         } else if (t === 'Skill') {
-          sim.advance(u, 0.1);
           this.gain(sim, u);
         }
       },

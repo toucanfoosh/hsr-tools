@@ -180,7 +180,7 @@
         if (u.state.roll < 3) followUp(sim, u, 10);
       },
     },
-    1210: { desc: 'Energy: standard. E4: +2 per Burn tick.', enemyTurnStart(sim, u) { if (E(u) >= 4 && u.state.burn) G(sim, u, 2); }, action(sim, u, t) { if (t === 'Skill') u.state.burn = true; } }, // Guinaifen
+    1210: { desc: 'Energy: standard (E4 Burn ticks: audit kit).' }, // Guinaifen
     1211: { desc: 'Energy: standard.' }, // Bailu
     1212: { // Jingliu (Novaflare): Transcendent Flash +15; Moon on Glacial River +8 (on top of data).
       desc: 'Energy: Transcendent Flash +15 more; Moon On Glacial River +8 more.',
