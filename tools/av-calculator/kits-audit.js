@@ -20,6 +20,12 @@
   const emod = (sim, id, props, turns) => sim.addEnemyMod({ id, turns, ...props });
   const isAtk = (t) => ['Basic', 'Skill', 'Enhanced', 'Extra', 'Final', 'Ult', 'FollowUp', 'Assist'].includes(t);
   const HALF = 0.5;
+  // A kit option's value, falling back to its default.
+  function O(u, key) {
+    const k = kits[u.cfg.char.id], opt = k && k.options && k.options.find((o) => o.key === key);
+    const v = u.cfg.opts && u.cfg.opts[key];
+    return v === undefined || v === '' ? opt && opt.def : v;
+  }
   const n = (sim) => Math.max(1, sim.enemyCount || 1);
   const lowestEnergyAlly = (sim, u) => sim.allies(u).filter((a) => a.maxEnergy > 0).sort((a, b) => a.energy / a.maxEnergy - b.energy / b.maxEnergy)[0];
 
@@ -158,7 +164,7 @@
       desc: 'Talent: +DMG up to 72% by missing HP (setting). Skill costs 15% HP. E1: Skill +10% at ≤50% HP. E6: at ≤50% HP, Ultimate +20% and adjacent targets take the full multiplier.',
       options: [{ key: 'hp', label: 'Arlan HP % (average)', type: 'number', def: 50, min: 1, max: 100, step: 1 }],
       battleStart(sim, u) {
-        const hp = (+(u.cfg.opts && u.cfg.opts.hp) || 50) / 100;
+        const hp = (+O(u, 'hp') || 50) / 100;
         u.state.low = hp <= 0.5;
         self(sim, u, 'painAnger', { dmg: 0.72 * (1 - hp) }, Infinity);
         if (E(u) >= 1 && u.state.low) self(sim, u, 'arlanE1', { dmg_Skill: 0.1 }, Infinity);
@@ -187,6 +193,191 @@
         if (E(u) >= 4) { if (u.state.chg >= 2) sim.addBuff(u, { id: 'astaE4', err: 0.15, turns: Infinity }); else sim.removeBuff(u, 'astaE4'); }
       },
       dmgScale(sim, u, act) { return E(u) >= 1 && act === 'Skill' ? 6 / 5 : 1; },
+    },
+
+    // ------------------------------------------------------------------ 1013 Herta
+    1013: {
+      desc: 'Skill +45% DMG vs enemies ≥50% HP (half). Talent follow-up (40% ATK all, +5 Energy) when an ally drops an enemy to 50% HP: setting below. Ultimate +20% vs Frozen. E1: Basic +40% ATK vs ≤50% HP (half). E2: +3% CRIT Rate per follow-up (5). E4: follow-up +10% DMG. E6: +25% ATK for 1 turn after Ultimate.',
+      options: [{ key: 'fua', label: 'Herta follow-ups per cycle', type: 'number', def: 1, min: 0, max: 5, step: 0.5 }],
+      battleStart(sim, u) { u.state.acc = 0; if (E(u) >= 4) self(sim, u, 'hertaE4', { dmg_FUA: 0.1 }, Infinity); },
+      enemyTurnStart(sim, u, e) {
+        // Spread the per-cycle follow-ups over enemy turns.
+        const per = (+O(u, 'fua') || 0) / Math.max(1, sim.enemies().length);
+        u.state.acc += per;
+        while (u.state.acc >= 1) {
+          u.state.acc -= 1;
+          const ev = sim.record(u, 'FollowUp', { label: 'Fine, I\'ll Do It Myself', n: u.actions });
+          ev.dmg = sim.dealDamage(u, 'FollowUp');
+          G(sim, u, 5); sim.snap(ev, u);
+          if (E(u) >= 2) sim.addBuff(u, { id: 'hertaE2', stats: { cr: 0.03 }, turns: Infinity, maxStacks: 5 });
+          sim.fireAll('allyAttack', u, 'FollowUp');
+        }
+      },
+      ult(sim, u) { if (E(u) >= 6) self(sim, u, 'hertaE6', { atkPct: 0.25 }, 1); },
+      dmgScale(sim, u, act) {
+        if (act === 'Skill') return 1 + 0.45 * HALF / (1 + st(sim, u).dmg);
+        if (act === 'Ult' && sim.enemies().some((e) => e.frozen)) return 1.2;
+        return 1;
+      },
+      extraDamage(sim, u, act) { return E(u) >= 1 && act === 'Basic' ? std(sim, u, { atk: 0.4 * HALF }, 'Basic') : 0; },
+    },
+    // ------------------------------------------------------------------ 1014 Saber
+    1014: {
+      desc: 'Core Resonance (CR): +1 at battle start, +3 whenever any ally uses an Ultimate (also +60% DMG for 2 turns), Skill +3 unless it can refill her Energy, Release +2, E1 +1 per Basic / Skill. Skill: if spending CR (8 fixed Energy each) fills her Energy, the Skill gets +14% multiplier per CR (E2: +21%) and spends it. Mana Burst (battle start, after Release): when the Skill could refill her, +1 SP and she acts immediately. After Ultimate the next Basic is Release (150% all, +150%/+220% vs 2/1 enemies). Starts at 60% Energy, stores 120 overflow (E6: 200). Crown: Skill +50% CRIT DMG 2 turns; +4% CRIT DMG per CR gained (8). E1: Ult DMG +60%. E2: ignore 1% DEF per CR gained (15). E4: +8% Wind RES PEN, +4% per Ult (3). E6: Ult +20% RES PEN; first Ult then every 3rd refunds 300 fixed Energy.',
+      battleStart(sim, u) {
+        u.energyOverflow = E(u) >= 6 ? 200 : 120; u.energy = Math.max(u.energy, u.maxEnergy * 0.6);
+        u.state.cr = 0; u.state.gained = 0; u.state.mana = true; u.state.ults = 0;
+        self(sim, u, 'knight', { cr: 0.2 }, Infinity);
+        if (E(u) >= 1) self(sim, u, 'saberE1', { dmg_Ult: 0.6 }, Infinity);
+        if (E(u) >= 4) self(sim, u, 'saberE4', { resPen: 0.08 }, Infinity);
+        if (E(u) >= 6) self(sim, u, 'saberE6', { resPen_Ult: 0.2 }, Infinity);
+        this.gainCR(sim, u, 1);
+      },
+      gainCR(sim, u, k) {
+        u.state.cr += k; u.state.gained += k;
+        self(sim, u, 'crown', { cd: 0.04 * Math.min(8, u.state.gained) }, Infinity);
+        if (E(u) >= 2) self(sim, u, 'saberE2', { defIgnore: 0.01 * Math.min(15, u.state.gained) }, Infinity);
+        this.checkMana(sim, u);
+      },
+      canRefill(sim, u) { return u.state.cr > 0 && u.energy + 30 * (1 + sim.err(u)) + 8 * u.state.cr >= u.maxEnergy - 1e-6; },
+      checkMana(sim, u) {
+        if (!u.state.mana || !this.canRefill(sim, u)) return;
+        u.state.mana = false;
+        sim.gainSP(1, u);
+        sim.actNow(u);
+      },
+      actionType(sim, u) { return u.state.release ? 'Enhanced' : undefined; },
+      spCost(sim, u, t) { return t === 'Enhanced' ? -1 : undefined; },
+      energyFor(sim, u, t) { return t === 'Enhanced' ? 30 : undefined; },
+      action(sim, u, t) {
+        if (t === 'Skill') {
+          self(sim, u, 'crownSkill', { cd: 0.5 }, 2);
+          if (this.canRefill(sim, u)) { u.state.boost = u.state.cr; F(sim, u, 8 * u.state.cr); u.state.cr = 0; }
+          else { u.state.boost = 0; this.gainCR(sim, u, 3); }
+        }
+        if (t === 'Enhanced') { u.state.release = false; u.state.mana = true; this.gainCR(sim, u, 2); }
+        if (E(u) >= 1 && (t === 'Basic' || t === 'Skill')) this.gainCR(sim, u, 1);
+      },
+      ult(sim, u) {
+        u.state.release = true; u.state.ults += 1;
+        if (E(u) >= 4) sim.addBuff(u, { id: 'saberE4ult', stats: { resPen: 0.04 }, turns: Infinity, maxStacks: 3 });
+        if (E(u) >= 6 && (u.state.ults - 1) % 3 === 0) F(sim, u, 300);
+        this.allyUlt(sim, u);
+      },
+      allyUlt(sim, u) { self(sim, u, 'dragonCore', { dmg: 0.6 }, 2); this.gainCR(sim, u, 3); },
+      dmgScale(sim, u, act) {
+        if (act === 'Skill' && u.state.boost) return 1 + u.state.boost * (0.14 + (E(u) >= 2 ? 0.07 : 0)) / 1.5;
+        if (act === 'Enhanced') { const k = n(sim); return k === 1 ? (1.5 + 2.2) / 1.5 : k === 2 ? 2 : 1; }
+        return 1;
+      },
+    },
+    // ------------------------------------------------------------------ 1015 Archer
+    1015: {
+      desc: 'Circuit Connection: after a Skill his turn continues and he repeats it (up to 5 Skills, while SP lasts), each repeat +100% Skill DMG (2 stacks; E6: 3), 30 Energy each. Guardian: after allies gain SP with 4+ SP, +120% CRIT DMG for 1 turn. E1: 3 Skills in one turn recover 2 SP. E2: Ultimate −20% Quantum RES for 2 turns. E4: Ult DMG +150%. E6: Skill ignores 20% DEF.',
+      battleStart(sim, u) {
+        if (E(u) >= 4) self(sim, u, 'archerE4', { dmg_Ult: 1.5 }, Infinity);
+        if (E(u) >= 6) self(sim, u, 'archerE6', { defIgnore_Skill: 0.2 }, Infinity);
+      },
+      action(sim, u, t) {
+        if (t !== 'Skill' || u.state.circuit) return;
+        u.state.circuit = true;
+        let casts = 1;
+        sim.addBuff(u, { id: 'circuit', stats: { dmg_Skill: 1 }, turns: Infinity, maxStacks: E(u) >= 6 ? 3 : 2 });
+        while (casts < 5 && sim.sp >= 1) {
+          casts += 1;
+          sim.useSP(1, u);
+          const ev = sim.record(u, 'FollowUp', { label: `Skill ×${casts} (Circuit Connection)`, n: u.actions });
+          ev.dmg = sim.dealDamage(u, 'Skill');
+          G(sim, u, 30); sim.snap(ev, u);
+          sim.fireAll('allyAttack', u, 'Skill');
+          sim.addBuff(u, { id: 'circuit', stats: { dmg_Skill: 1 }, turns: Infinity, maxStacks: E(u) >= 6 ? 3 : 2 });
+          if (E(u) >= 1 && casts === 3) sim.gainSP(2, u);
+        }
+        sim.removeBuff(u, 'circuit');
+        u.state.circuit = false;
+      },
+      spGained(sim, u) { if (sim.sp >= 4) self(sim, u, 'guardian', { cd: 1.2 }, 1); },
+      ult(sim, u) { if (E(u) >= 2) emod(sim, 'archerE2', { res: 0.2 }, 2); },
+    },
+    // ------------------------------------------------------------------ 1101 Bronya
+    1101: {
+      desc: 'Basic ATK always CRITs. E4: after another ally\'s Basic ATK, a follow-up for 80% of her Basic DMG (once per turn). E6: the Skill\'s DMG boost lasts 1 more turn.',
+      battleStart(sim, u) { self(sim, u, 'command', { cr_Basic: 1 }, Infinity); },
+      turnStart(sim, u) { u.state.e4 = true; },
+      allyAction(sim, u, a, t) {
+        if (E(u) >= 6 && t && a === sim.targetOf(u) && sim.hasBuff(a, 'bronyaSkill')) { /* duration handled below */ }
+        if (E(u) < 4 || t !== 'Basic' || a.kind !== 'char' || !u.state.e4) return;
+        u.state.e4 = false;
+        const ev = sim.record(u, 'FollowUp', { label: 'E4 Follow-up', n: u.actions });
+        ev.dmg = std(sim, u, { atk: 0.8 * 1.0 }, 'FUA');
+        sim.addDamage(u, ev.dmg, 'Follow-up');
+        sim.fireAll('allyAttack', u, 'FollowUp');
+      },
+      action(sim, u, t) {
+        if (t === 'Skill' && E(u) >= 6) { const tg = sim.targetOf(u); const b = tg && tg.buffs.find((x) => x.id === 'bronyaSkill'); if (b) b.turns = 2; }
+      },
+    },
+    // ------------------------------------------------------------------ 1102 Seele
+    1102: {
+      desc: 'Novaflare Skill: after an ally attacks a target at ≤50% HP (half the time), she auto-casts her Skill on it once per turn (no SP, no Energy, with its SPD buff). Ultimate enters Amplification: +80% DMG and +25% Quantum RES PEN for 3 turns. E1: +15% CRIT Rate and 20% DEF ignore vs ≤80% HP (80% of the time). E6: Ultimate inflicts Butterfly Flurry (3 turns): the target takes 30% of her Ult DMG as True DMG after each attack. Kills (Resurgence extra turns, Nightshade) aren\'t simulated.',
+      battleStart(sim, u) { u.state.auto = true; if (E(u) >= 1) self(sim, u, 'seeleE1', { cr: 0.15 * 0.8, defIgnore: 0.2 * 0.8 }, Infinity); },
+      turnStart(sim, u) { u.state.auto = true; if (u.state.flurry > 0) u.state.flurry -= 1; },
+      allyAttack(sim, u, a) {
+        this.flurryHit(sim, u);
+        if (!u.state.auto || a.kind !== 'char' || !sim.chance(u, 'low', HALF / 0.8)) return;
+        u.state.auto = false;
+        const ev = sim.record(u, 'FollowUp', { label: 'Sheathed Blade (auto)', n: u.actions });
+        ev.dmg = sim.dealDamage(u, 'Skill');
+        sim.snap(ev, u);
+        sim.addBuff(u, { id: 'seele', pct: 0.25, turns: 3, maxStacks: E(u) >= 2 ? 2 : 1 });
+        sim.fireAll('allyAttack', u, 'Skill');
+      },
+      ult(sim, u) {
+        self(sim, u, 'amplification', { dmg: 0.8, resPen: 0.25 }, 3);
+        if (E(u) >= 6) u.state.flurry = 3;
+      },
+      flurryHit(sim, u) { if (u.state.flurry > 0 && u.state.ultDmg) sim.addDamage(u, 0.3 * u.state.ultDmg, 'Butterfly Flurry'); },
+      afterDamage(sim, u, act) {
+        if (act === 'Ult') {
+          // Her Ultimate's own DMG on its single target (the Ultimate event, not a Break logged after it).
+          const ev = [...sim.events].reverse().find((e) => e.unit === u && e.type === 'Ultimate');
+          u.state.ultDmg = ev && ev.dmg;
+        } else if (isAtk(act)) this.flurryHit(sim, u);
+      },
+    },
+    // ------------------------------------------------------------------ 1103 Serval
+    1103: {
+      desc: 'Skill Shock: 100% base chance (80% + 20%) on the target and adjacent. Ultimate extends Shock by 2 turns (E4: Shocks everyone). Talent: after attacking, 72% ATK Additional DMG to every Shocked enemy (E2: +4 Energy). E1: Basic hits an adjacent enemy for 60%. E6: +30% DMG vs Shocked.',
+      shocked(sim, u) { return (sim.dots || []).some((d) => d.src === u); },
+      ult(sim, u) {
+        (sim.dots || []).filter((d) => d.src === u).forEach((d) => { d.turns += 2; });
+        if (E(u) >= 4 && !this.shocked(sim, u)) sim.addDot({ id: `${u.key}:Lightning Flash`, src: u, mult: { atk: 1.04 }, turns: 2 });
+      },
+      extraDamage(sim, u, act) {
+        let d = 0;
+        if (isAtk(act) && this.shocked(sim, u)) { d += std(sim, u, { atk: 0.72 }) * Math.min(3, n(sim)); if (E(u) >= 2) G(sim, u, 4); }
+        if (E(u) >= 1 && act === 'Basic' && n(sim) > 1) d += std(sim, u, { atk: 0.6 }, 'Basic');
+        return d;
+      },
+      dmgScale(sim, u) { return E(u) >= 6 && this.shocked(sim, u) ? 1 + 0.3 / (1 + st(sim, u).dmg) : 1; },
+    },
+    // ------------------------------------------------------------------ 1104 Gepard
+    1104: {
+      desc: 'Skill: 65% base chance (E1: 100%) to Freeze the target for 1 turn (60% ATK Freeze DMG; E2: Slow 20% for 1 turn after). Grit: ATK +35% of DEF.',
+      battleStart(sim, u) { const s = st(sim, u); self(sim, u, 'grit', { atk: 0.35 * s.DEF }, Infinity); },
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        const e = sim.enemies()[0];
+        if (e && sim.chance(u, 'freeze', 0.65 + (E(u) >= 1 ? 0.35 : 0))) {
+          sim.freezeEnemy(e, u, { atk: 0.6 });
+          if (E(u) >= 2) sim.addBuff(e, { id: 'gepardE2', pct: -0.2, turns: 2, debuff: true });
+        }
+      },
+    },
+    // ------------------------------------------------------------------ 1105 Natasha
+    1105: {
+      desc: 'E6: Basic ATK adds Physical DMG equal to 40% of her Max HP.',
+      extraDamage(sim, u, act) { return E(u) >= 6 && act === 'Basic' ? std(sim, u, { hp: 0.4 }, 'Basic') : 0; },
     },
   };
 

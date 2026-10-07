@@ -87,13 +87,7 @@
     1013: { // Herta: follow-up when an enemy drops to 50% HP (roughly once per wave; not simulated).
       desc: 'Energy: standard. Her follow-up (enemy below 50% HP) depends on enemy HP and is not simulated.',
     },
-    1014: { // Saber: Core Resonance refills; overflow up to 120; starts at 60%.
-      desc: 'Energy: starts at 60%, can overflow by 120. Skill consumes Core Resonance for 8 fixed Energy each (Core Resonance: +3 per ally Ultimate, simplified).',
-      battleStart(sim, u) { u.energyOverflow = E(u) >= 1 ? 200 : 120; u.energy = Math.max(u.energy, u.maxEnergy * 0.6); u.state.core = 0; },
-      allyUlt(sim, u) { u.state.core = (u.state.core || 0) + 3; },
-      action(sim, u, t) { if (t === 'Skill' && u.state.core) { F(sim, u, 8 * u.state.core); u.state.core = 0; } },
-      ult(sim, u) { if (E(u) >= 6 && !u.state.firstUlt) { u.state.firstUlt = true; F(sim, u, 300); } },
-    },
+    1014: { desc: 'Energy: see the audit kit (Core Resonance).' }, // Saber
     1015: { // Archer: SP cap +2; follow-ups (Charge) after teammates attack recover SP.
       desc: 'SP: max +2. Skill doesn\'t end the turn (repeats while SP allows, up to 5; simplified to one Skill). Charge (+1 at start, +2 per Ultimate) → follow-up (+5 Energy, +1 SP) after a teammate attacks. E6: +1 SP at turn start.',
       battleStart(sim, u) { sim.spMax += 2; u.state.charge = 1; },
