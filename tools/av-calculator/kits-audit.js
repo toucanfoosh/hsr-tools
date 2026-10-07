@@ -2543,6 +2543,131 @@
         return d;
       },
     },
+
+    // ------------------------------------------------------------------ 8002 Trailblazer • Destruction
+    8002: {
+      desc: 'Ultimate: Blowout: RIP Home Run (blast) with 2+ enemies, else Blowout: Farewell Hit. Talent: +20% ATK per Weakness Break he causes (2 stacks); Tenacity: +10% DEF per stack. Fighting Will: Skill and RIP Home Run +25% DMG to the target. E4: +25% CRIT Rate vs Broken enemies.',
+      battleStart(sim, u) { if (E(u) >= 4) self(sim, u, 'tbE4', { cr: (s) => 0.25 * s.brokenShare() }, Infinity); },
+      dmgAbility(sim, u, act) { return act === 'Ult' ? (n(sim) >= 2 ? 'Blowout: RIP Home Run' : 'Blowout: Farewell Hit') : undefined; },
+      weaknessBreak(sim, u, by) { if (by === u) self(sim, u, 'pickoff', { atkPct: 0.2, defPct: 0.1 }, Infinity, { maxStacks: 2 }); },
+      dmgScale(sim, u, act) {
+        const adj = Math.min(2, n(sim) - 1);
+        if (act === 'Skill') return (1.25 + adj) / (1 + adj);
+        if (act === 'Ult' && n(sim) >= 2) return (2.7 * 1.25 + 1.62 * adj) / (2.7 + 1.62 * adj);
+        return 1;
+      },
+    },
+    // ------------------------------------------------------------------ 8004 Trailblazer • Preservation
+    8004: {
+      desc: 'Magma Will: +1 per Basic ATK, Skill and hit taken (max 8; E4: starts with 4); at 4 the Basic ATK is Enhanced (blast, uses 4), and after his Ultimate the next one is Enhanced for free. Ultimate: 100% ATK + 150% DEF to all enemies. Action Beats Overthinking: his Talent shields keep him shielded, so from his 2nd turn on each turn starts with +15% ATK and +5 Energy. E1: Basic +25% DEF (Enhanced +50%) as extra DMG. E6: Enhanced Basic / Ultimate +10% DEF (3 stacks).',
+      battleStart(sim, u) { u.state.will = E(u) >= 4 ? 4 : 0; u.state.shield = false; },
+      hit(sim, u) { u.state.will = Math.min(8, u.state.will + 1); },
+      turnStart(sim, u) { if (u.state.shield) { G(sim, u, 5); self(sim, u, 'actionBeats', { atkPct: 0.15 }, 1); } },
+      actionType(sim, u) { return u.state.free || u.state.will >= 4 ? 'Enhanced' : undefined; },
+      spCost(sim, u, t) { return t === 'Enhanced' ? -1 : undefined; },
+      action(sim, u, t) {
+        if (t === 'Enhanced') { if (u.state.free) u.state.free = false; else u.state.will -= 4; }
+        if (t === 'Basic' || t === 'Skill') u.state.will = Math.min(8, u.state.will + 1);
+        if (['Basic', 'Skill', 'Enhanced'].includes(t)) u.state.shield = true;
+      },
+      ult(sim, u) { u.state.free = true; u.state.shield = true; },
+      afterDamage(sim, u, act) { if (E(u) >= 6 && (act === 'Enhanced' || act === 'Ult')) self(sim, u, 'tbPresE6', { defPct: 0.1 }, Infinity, { maxStacks: 3 }); },
+      extraDamage(sim, u, act) {
+        if (E(u) < 1) return 0;
+        if (act === 'Basic') return std(sim, u, { def: 0.25 }, 'Basic');
+        if (act === 'Enhanced') return std(sim, u, { def: 0.5 }, 'Basic');
+        return 0;
+      },
+    },
+    // ------------------------------------------------------------------ 8006 Trailblazer • Harmony
+    8006: {
+      desc: 'Hat of the Theater: allies breaking a Weakness delay that enemy 30%. Shuffle Along: the Skill\'s first hit deals double Toughness DMG. E1: first Skill refunds 1 SP. E4: teammates +15% of his Break Effect. E6: Skill +2 bounces.',
+      battleStart(sim, u) {
+        if (E(u) >= 4) sim.allies(u).forEach((a) => sim.addBuff(a, { id: 'tbHarmE4', stats: { be: 0.15 * (st(sim, u).be || 0) }, turns: Infinity }));
+      },
+      weaknessBreak(sim, u, by, e) { if (e && by && (by.kind === 'char' || by.owner)) sim.delay(e, 0.3); },
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        const ab = AD().abilityFor(sim, u, 'Skill');
+        if (ab && ab.tough && ab.tough.one) AD().applyToughness(sim, u, { tough: { one: ab.tough.one / 5 } }, u);
+        if (E(u) >= 1 && !u.state.e1) { u.state.e1 = true; sim.gainSP(1, u); }
+      },
+      dmgScale(sim, u, act) { return act === 'Skill' && E(u) >= 6 ? 7 / 5 : 1; },
+    },
+    // ------------------------------------------------------------------ 8008 Trailblazer • Remembrance
+    8008: {
+      desc: 'Mem\'s Charge: 40% when first summoned, +1% per 10 Energy any ally regenerates, +10% per Skill / Enhanced Basic, +40% per Ultimate, +5% per "Baddies! Trouble!"; at 100% Mem acts at once with "Lemme! Help You!": the ability target (or the first teammate) advances 100% and gets Mem\'s Support for 3 turns: each DMG instance they deal adds 28% of it as True DMG (+2% per 10 Max Energy above 100, max 20%; E4: +6% for 0-Energy allies). Unfinished Epilogue: his Ultimate gives an Epic; with an Epic and Mem out, his Basic ATK is the Joint ATK "Together, We Script Tomorrow!". E1: supported allies +10% CRIT Rate. E6: Ultimate CRIT Rate 100%.',
+      battleStart(sim, u) { u.state.charge = 0; u.state.epic = 0; u.state.lastE = 0; u.state.summoned = false; },
+      mem(sim, u) { return sim.units.find((x) => x.owner === u && x.name === 'Mem' && x.alive); },
+      energySync(sim, u) {
+        const tot = sim.chars().reduce((a, c) => a + (c.energyTotal || 0), 0);
+        this.charge(sim, u, (tot - u.state.lastE) / 1000);
+        u.state.lastE = tot;
+      },
+      charge(sim, u, k) {
+        if (!this.mem(sim, u)) return;
+        u.state.charge += k;
+        if (u.state.charge >= 1 && !u.state.supportPending) { u.state.supportPending = true; this.support(sim, u); }
+      },
+      support(sim, u) {
+        const m = this.mem(sim, u);
+        u.state.charge = 0; u.state.supportPending = false;
+        const tg = (sim.targetOf(u) && sim.targetOf(u) !== u ? sim.targetOf(u) : sim.allies(u)[0]) || u;
+        sim.record(m, 'FollowUp', { label: 'Lemme! Help You!' });
+        sim.units.forEach((x) => sim.removeBuff(x, 'memSupport'));
+        const extraPct = Math.min(0.2, 0.02 * Math.floor(Math.max(0, (tg.maxEnergy || 0) - 100) / 10)) + (E(u) >= 4 && !(tg.maxEnergy > 0) ? 0.06 : 0);
+        sim.addBuff(tg, { id: 'memSupport', stats: E(u) >= 1 ? { cr: 0.1 } : {}, turns: 3, pct0: 0.28 + extraPct });
+        if (tg !== u) sim.actNow(tg);
+      },
+      damageDealt(sim, u, by, amt, label) {
+        if (!amt || /True/.test(label || '') || !by) return;
+        const holder = by.buffs && by.buffs.find((b) => b.id === 'memSupport') || (E(u) >= 1 && by.owner && by.owner.buffs.find((b) => b.id === 'memSupport'));
+        if (holder) sim.addDamage(by.kind === 'summon' ? by.owner : by, holder.pct0 * amt, 'True DMG (Mem)');
+      },
+      turnStart(sim, u) { this.energySync(sim, u); },
+      allyAction(sim, u, a, t) {
+        this.energySync(sim, u);
+        if (a.name === 'Mem' && a.owner === u && t === 'Summon') this.charge(sim, u, 0.05);
+      },
+      actionType(sim, u) { return u.state.epic > 0 && this.mem(sim, u) ? 'Enhanced' : undefined; },
+      spCost(sim, u, t) { return t === 'Enhanced' ? -1 : undefined; },
+      action(sim, u, t) {
+        if (t === 'Skill') {
+          if (!u.state.summoned && this.mem(sim, u)) { u.state.summoned = true; this.charge(sim, u, 0.4); }
+          else this.charge(sim, u, 0.1);
+        }
+        if (t === 'Enhanced') { u.state.epic -= 1; }
+        this.energySync(sim, u);
+      },
+      afterDamage(sim, u, act) { if (act === 'Enhanced') this.charge(sim, u, 0.1); },
+      ult(sim, u) {
+        u.state.epic = Math.min(2, u.state.epic + 1);
+        if (!this.mem(sim, u)) { window.AVEffects.kits[8008].action(sim, u, 'Skill'); }
+        if (!u.state.summoned) { u.state.summoned = true; this.charge(sim, u, 0.4); }
+        this.charge(sim, u, 0.4);
+        if (E(u) >= 6) self(sim, u, 'tbRemE6', { cr_Ult: 1 }, Infinity);
+      },
+    },
+    // ------------------------------------------------------------------ 8010 Trailblazer • Elation
+    8010: {
+      desc: 'On Cloud Nine: +10% Elation per 200 ATK above 1000 (max 60%). Screw It, We Ball: +15% CRIT Rate. E1: each Skill makes his next Ultimate give the target 2 more Certified Banger (3 stacks). E2: Ultimate target +12% Elation for 2 turns. E4: his Elation Skill: enemies take +10% DMG for 2 turns. E6: his Elation Skill: +100% CRIT DMG for 3 turns.',
+      battleStart(sim, u) {
+        const atk = st(sim, u).ATK;
+        self(sim, u, 'cloudNine', { elation: Math.min(0.6, 0.1 * Math.floor(Math.max(0, atk - 1000) / 200)), cr: 0.15 }, Infinity);
+        u.state.e1 = 0;
+      },
+      action(sim, u, t) { if (t === 'Skill' && E(u) >= 1) u.state.e1 = Math.min(3, u.state.e1 + 1); },
+      ult(sim, u) {
+        const tg = sim.targetOf(u);
+        if (tg && E(u) >= 1 && u.state.e1 && tg.cfg.char.combat.elationPid) sim.gainCB(tg, 2 * u.state.e1, { src: 'Trailblazer' });
+        u.state.e1 = 0;
+        if (tg && E(u) >= 2) sim.addBuff(tg, { id: 'tbElE2', stats: { elation: 0.12 }, turns: 2 });
+      },
+      elation(sim, u) {
+        if (E(u) >= 4) emod(sim, 'tbElE4', { vuln: 0.1 }, 2);
+        if (E(u) >= 6) self(sim, u, 'tbElE6', { cd: 1 }, 3);
+      },
+    },
   };
 
   window.AVAuditKits = kits;

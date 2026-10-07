@@ -214,6 +214,8 @@ DMG_OVERRIDES = {
     ("1504", "Banquet: Insatiable Appetite"): [{"p": 0, "stat": "atk", "target": "main"}],  # + enhanced follow-up (kit)
     ("1510", "We, Too, Stride the Stars"): [{"p": 8, "stat": "atk", "target": "main"}, {"p": 9, "stat": "atk", "target": "others"},
                                          {"p": 6, "stat": "atk", "target": "random", "cnt": {"p": 5}}],  # "up to" totals + Final Hit
+    ("8002", "Stardust Ace"): [],                                                # the two modes are separate abilities
+    ("8004", "War-Flaming Lance"): [{"p": 0, "stat": "atk", "target": "all"}, {"p": 1, "stat": "def", "target": "all"}],
     ("1312", "G—Gonna Be Late!"): [{"p": 1, "stat": "atk", "target": "main"}],  # per hit; hit count in the kit                                     # Deep Learning buffs later attacks
 }
 
