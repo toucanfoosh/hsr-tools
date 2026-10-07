@@ -619,6 +619,8 @@
           id: l.id, name: l.name, src: img.lc(l.id), rarity: l.rarity,
           sub: `${'★'.repeat(l.rarity)} · ${l.path}`, desc: '',
           sig: l.id === signatureOf(s.charId), path: l.path, owned: ownedLc.get(l.id),
+          // Hidden search text: the cone's name plus its signature character.
+          keys: norm(`${l.name} ${SIG_OWNER[l.id] || ''}`),
         })),
         none: 'No light cone',
         filters: [
@@ -640,7 +642,7 @@
       <div class="card modal-box gear-box" role="dialog" aria-label="${esc(cfg.title)}">
         <div class="modal-head">
           <div class="top"><h3>${esc(cfg.title)}</h3><button class="btn ghost" data-close>Close</button></div>
-          <input type="search" placeholder="${kind === 'lc' ? 'Search by name…' : 'Search by name or effect…'}" data-q>
+          <input type="search" placeholder="Search by name or character…" data-q>
           <div class="filters"${cfg.filters.length ? '' : ' hidden'}>${cfg.filters.map((fl) => `<button class="pill toggle${fl.on ? ' on' : ''}" data-filter="${fl.key}">${esc(fl.label)}</button>`).join('')}</div>
         </div>
         <div class="gear-list" data-list></div>
@@ -648,9 +650,12 @@
     const list = m.el.querySelector('[data-list]');
     let q = '';
     const draw = () => {
-      const needle = q.toLowerCase();
-      const items = cfg.items.filter((x) => (!needle || x.name.toLowerCase().includes(needle) || x.desc.toLowerCase().includes(needle))
-        && cfg.filters.every((fl) => !fl.on || fl.test(x)));
+      const words = norm(q).split(' ').filter(Boolean);
+      const hay = (x) => x.keys || norm(`${x.name} ${x.desc}`);
+      // Every word must match. While searching, the Path filter is ignored so a character's
+      // signature shows up even if it's on another Path.
+      const items = cfg.items.filter((x) => words.every((w) => hay(x).includes(w))
+        && cfg.filters.every((fl) => !fl.on || (words.length && fl.key === 'path') || fl.test(x)));
       // Signature first, then what's equipped, then what you own, then by rarity.
       items.sort((a, b) => ((b.sig ? 1 : 0) - (a.sig ? 1 : 0)) || (wornBy(b.id) - wornBy(a.id)) || ((b.owned ? 1 : 0) - (a.owned ? 1 : 0)) || ((b.rarity || 0) - (a.rarity || 0)));
       const row = (x) => `
@@ -691,6 +696,10 @@
     if (!lc) return 1;
     return lc.rarity <= 4 || String(id).startsWith('24') ? 5 : 1;
   }
+
+  const norm = (t) => String(t).toLowerCase().replace(/[•·:'’!?,.()]/g, ' ').replace(/\s+/g, ' ').trim();
+  const SIG_OWNER = {};
+  DATA.characters.forEach((c) => { if (c.signature) SIG_OWNER[c.signature] = `${SIG_OWNER[c.signature] || ''} ${c.name}`; });
 
   // Stat categories for filtering sets by their bonus.
   const SET_STATS = [
