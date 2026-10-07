@@ -195,6 +195,10 @@ DMG_OVERRIDES = {
     ("1309", "Vox Harmonique, Opus Cosmique"): [],                              # Concerto buffs / additional DMG
     ("1221", "Earthbind, Etherbreak"): [],                                      # the Counter it sets up deals the DMG
     ("1503", "Appraise Soul's Ground"): [],
+    ("1314", "Acquisition Surety"): [],                                         # Debt Collector's Additional DMG: kit
+    ("1317", "Ningu: Demonbane Petalblade"): [{"p": 0, "stat": "atk", "target": "main", "cnt": 2},
+                                              {"p": 1, "stat": "atk", "target": "adj", "cnt": 2},
+                                              {"p": 2, "stat": "atk", "target": "all"}],
     ("1312", "G—Gonna Be Late!"): [{"p": 1, "stat": "atk", "target": "main"}],  # per hit; hit count in the kit                                     # Deep Learning buffs later attacks
 }
 

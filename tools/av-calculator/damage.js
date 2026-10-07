@@ -185,7 +185,7 @@
       ab = (u.memo ? abs.find((a) => a.memo && a.hits && a.hits.length) : null) || abs.find((a) => a.type === 'Talent' && a.hits && a.hits.length) || null;
     } else ab = abilityFor(sim, u, act, extra);
     if (ab) {
-      applyToughness(sim, src, ab, u);
+      applyToughness(sim, src, ab, u, act);
       const m = multipliers(sim, src, ab);
       const scale = sim.fireProduct(src, 'dmgScale', act, extra, u);
       // Kits can re-type damage (Acheron E6: Basic / Skill count as Ultimate DMG).
@@ -269,9 +269,7 @@
     1321: { // The Dahlia: Zone +50% WBE for all; Dance Partners' attacks on broken → 60% Super Break.
       action(sim, u, t) {
         if (t !== 'Skill') return;
-        team(sim, 'dahliaZone', { wbe: 0.5 }, 3, { tick: 'owner', owner: u });
-        const tg = sim.targetOf(u);
-        [u, tg].filter(Boolean).forEach((a) => sim.addBuff(a, { id: 'dancePartner', stats: { superBreak: 0.6 }, turns: Infinity }));
+        team(sim, 'dahliaZone', { wbe: 0.5, sbUnbroken: 1 }, 3, { tick: 'owner', owner: u });
       },
       ult(sim, u) { sim.addEnemyMod({ id: 'wilt', def: 0.18, turns: 4 }); },
     },
@@ -452,7 +450,7 @@
   }
   // Toughness: reduce every enemy by its share of the hit (main target: one + all; adjacent:
   // spread + all; others: all). Returns the reduction per broken enemy for Super Break.
-  function applyToughness(sim, src, ab, attacker) {
+  function applyToughness(sim, src, ab, attacker, act) {
     const t = ab && ab.tough;
     if (!t || !sim.enemies) return;
     const es = sim.enemies();
@@ -469,11 +467,14 @@
         if (e.luster > 0 && (e.luster -= raw) <= 1e-9) { e.luster = 0; sim.addDamage(src, breakDamage(sim, src), 'Break (Cloudflame)'); }
         return;
       }
+      // The Dahlia's Zone: Toughness reduction on unbroken enemies also becomes Super Break.
+      if (st.sbUnbroken > 0) { sbTough += raw; sbHits += 1; }
       e.tough -= raw;
       if (e.tough <= 1e-9) sim.breakEnemy(e, src);
     });
-    // Super Break: Toughness reduction dealt to already-broken enemies.
-    const sb = (st.superBreak || 0) + (st.fireflySB ? (st.be >= 3 ? 1.5 : st.be >= 1.5 ? 1 : 0) : 0);
+    // Super Break: Toughness reduction dealt to already-broken enemies (`superBreak_<act>`: only
+    // for that action, e.g. The Dahlia's follow-up at 200%).
+    const sb = (st.superBreak || 0) + (act ? st[`superBreak_${act}`] || 0 : 0) + (st.fireflySB ? (st.be >= 3 ? 1.5 : st.be >= 1.5 ? 1 : 0) : 0);
     if (sbTough > 0 && sb > 0) {
       const dmg = BREAK_LEVEL_MULT * (sbTough / 10) * (1 + st.be) * sb * common(sim, { ...st, cr: 0 }, 'Break') / (0.9 + 0.1 * sim.brokenShare());
       sim.addDamage(src, dmg, 'Super Break');

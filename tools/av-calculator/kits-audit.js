@@ -1383,6 +1383,181 @@
         return (u.state.ultHits || 3) * (E(u) >= 4 ? 0.66 / 0.6 : 1) * (1 + fz * cr * 0.3 / (1 + cr * s.cd));
       },
     },
+
+    // ------------------------------------------------------------------ 1313 Sunday
+    1313: {
+      desc: 'E1: his Skill target ignores 16% DEF for 2 turns. E2: The Beatified +30% DMG. E6: the Talent CRIT Rate buff stacks to 3 and lasts 4 turns, his Ultimate applies it too, and CRIT Rate above 100% becomes CRIT DMG at 2×.',
+      cr6(sim, u, tg) {
+        sim.removeBuff(tg, 'sundayCR');
+        sim.addBuff(tg, { id: 'sundayCR6', stats: { cr: 0.2, cd: (s, a) => {
+          const base = ((a.stats0 && a.stats0.cr) || 0) + a.buffs.reduce((t, b) => t + (b.stats && typeof b.stats.cr === 'number' ? b.stats.cr * (b.stacks || 1) : 0), 0);
+          return 2 * Math.max(0, base - 1) / Math.max(1, (a.buffs.find((b) => b.id === 'sundayCR6') || {}).stacks || 1);
+        } }, turns: 4, maxStacks: 3 });
+      },
+      afterDamage(sim, u, act) {
+        const tg = sim.targetOf(u); if (!tg) return;
+        if (act === 'Skill') {
+          if (E(u) >= 1) sim.addBuff(tg, { id: 'sundayE1', stats: { defIgnore: 0.16 }, turns: 2 });
+          if (E(u) >= 6) this.cr6(sim, u, tg);
+        }
+        if (act === 'Ult') {
+          if (E(u) >= 2) { sim.units.forEach((x) => sim.removeBuff(x, 'sundayE2')); sim.addBuff(tg, { id: 'sundayE2', stats: { dmg: 0.3 }, turns: 3, tick: 'owner', owner: u }); }
+          if (E(u) >= 6) this.cr6(sim, u, tg);
+        }
+      },
+    },
+    // ------------------------------------------------------------------ 1314 Jade
+    1314: {
+      desc: 'Debt Collector: after their attack, 25% ATK Quantum Additional DMG per enemy hit (from Jade); her Skill can\'t be used while one exists. Pawned Asset: +2.4% CRIT DMG and +0.5% ATK per stack (max 50): +5 per Talent follow-up, +3 at each Debt Collector turn start, +1 per enemy at battle start. Ultimate: the next 2 Talent follow-ups +80% multiplier. E1: Talent follow-up +32% DMG. E2: +18% CRIT Rate at 15+ stacks. E4: Ultimate: ignore 12% DEF for 3 turns. E6: +20% Quantum RES PEN and she counts as a Debt Collector while one exists.',
+      battleStart(sim, u) { u.state.pawn = 0; u.state.enh = 0; this.pawn(sim, u, n(sim)); },
+      pawn(sim, u, k) {
+        u.state.pawn = Math.min(50, u.state.pawn + k);
+        const p = u.state.pawn;
+        sim.removeBuff(u, 'pawned');
+        self(sim, u, 'pawned', { cd: 0.024 * p, atkPct: 0.005 * p, ...(E(u) >= 2 && p >= 15 ? { cr: 0.18 } : {}) }, Infinity);
+      },
+      dc(sim, u) { const tg = sim.targetOf(u); return tg && sim.hasBuff(tg, 'jade') ? tg : null; },
+      actionType(sim, u) { return this.dc(sim, u) ? 'Basic' : undefined; },
+      allyTurnStart(sim, u, a) { if (a === this.dc(sim, u)) this.pawn(sim, u, 3); },
+      turnStart(sim, u) { if (this.dc(sim, u) === u) this.pawn(sim, u, 3); },
+      collect(sim, u, a, t) {
+        if (!['Basic', 'Skill', 'Ult', 'Enhanced', 'FollowUp', 'Assist'].includes(t)) return;
+        sim.addDamage(u, std(sim, u, { atk: 0.25 * sim.targetsHit(a, t) }), 'Debt Collector');
+      },
+      allyAttack(sim, u, a, t) { if (a === this.dc(sim, u)) this.collect(sim, u, a, t); },
+      afterDamage(sim, u, act) {
+        const dc = this.dc(sim, u);
+        if (dc && (dc === u || E(u) >= 6) && act !== 'FollowUp') this.collect(sim, u, u, act);
+        if (E(u) >= 6) { if (dc) self(sim, u, 'jadeE6', { resPen: 0.2 }, Infinity); else sim.removeBuff(u, 'jadeE6'); }
+      },
+      ult(sim, u) { u.state.enh = 2; if (E(u) >= 4) self(sim, u, 'jadeE4', { defIgnore: 0.12 }, 3); },
+      followUpDone(sim, u) { this.pawn(sim, u, 5); },
+      dmgScale(sim, u, act) {
+        if (act !== 'FollowUp') return 1;
+        let f = E(u) >= 1 ? 1 + 0.32 / (1 + st(sim, u).dmg) : 1;
+        if (u.state.enh > 0) { u.state.enh -= 1; const p = window.AVEffects.P(u, 'Talent', 4); f *= (p + 0.8) / p; }
+        return f;
+      },
+    },
+    // ------------------------------------------------------------------ 1315 Boothill
+    1315: {
+      desc: 'Skill (1 SP, no Energy, doesn\'t end the turn): Standoff for 2 of his turns, Basic ATK becomes Fanning the Hammer (30 Energy, no SP); the Standoff enemy takes +30% DMG from him (E4: +12%) and is Taunted. Breaking it ends the Standoff and gives Pocket Trickshot (max 3; +50% Enhanced Basic Toughness DMG each; Point Blank +10 Energy; E2: +1 SP and +30% Break Effect for 2 turns). Breaking with the Enhanced Basic ATK deals 70/120/170% of his Physical Break DMG (Toughness counted up to 160; E6: +40% and 70% to adjacent). Ghost Load: +10% / 50% of Break Effect as CRIT Rate / CRIT DMG (max 30% / 150%). E1: starts with 1 Trickshot; ignores 16% DEF.',
+      battleStart(sim, u) {
+        u.state.trick = E(u) >= 1 ? 1 : 0; u.state.standoff = 0;
+        const be = (u.stats0 && u.stats0.be) || 0;
+        self(sim, u, 'ghostLoad', { cr: Math.min(0.3, 0.1 * be), cd: Math.min(1.5, 0.5 * be) }, Infinity);
+        if (E(u) >= 1) self(sim, u, 'boothillE1', { defIgnore: 0.16 }, Infinity);
+      },
+      turnStart(sim, u) {
+        if (u.state.standoff > 0) u.state.standoff -= 1;
+        if (u.state.standoff > 0 || sim.sp < 1) return;
+        sim.useSP(1, u);
+        const ev = sim.record(u, 'FollowUp', { label: 'Sizzlin\' Tango (Skill)', n: u.actions + 1 });
+        u.state.standoff = 2;
+        sim.snap(ev, u);
+      },
+      actionType(sim, u) { return u.state.standoff > 0 ? 'Enhanced' : undefined; },
+      energyFor(sim, u, t) { return t === 'Enhanced' ? 30 : undefined; },
+      spCost(sim, u, t) { return t === 'Enhanced' ? 0 : undefined; },
+      action(sim, u, t) {
+        if (t !== 'Enhanced' || !u.state.trick) return;
+        const ab = u.cfg.char.combat.abilities.find((a) => a.name === 'Fanning the Hammer');
+        if (ab && ab.tough) AD().applyToughness(sim, u, { tough: { one: ab.tough.one * 0.5 * u.state.trick } }, u);
+      },
+      tauntMult(sim, u) { return u.state.standoff > 0 ? 1 + 4 / n(sim) : 1; },
+      dmgScale(sim, u) {
+        if (!(u.state.standoff > 0)) return 1;
+        const v = (sim.enemyMods || []).reduce((a, m) => a + (m.vuln || 0), 0);
+        return (1 + v + 0.3 + (E(u) >= 4 ? 0.12 : 0)) / (1 + v);
+      },
+      weaknessBreak(sim, u, by, e) {
+        if (!(u.state.standoff > 0) || e !== sim.enemies()[0]) return;
+        if (by === u && sim.current === u && u.state.trick > 0) {
+          const tough = sim.enemyToughness || 160, cap = (0.5 + Math.min(tough, 160) / 40) / (0.5 + tough / 40);
+          const k = [0, 0.7, 1.2, 1.7][u.state.trick] * cap;
+          const bd = AD().breakDamage(sim, u);
+          sim.addDamage(u, bd * k * (1 + (E(u) >= 6 ? 0.4 : 0)) + (E(u) >= 6 ? bd * k * 0.7 * Math.min(2, n(sim) - 1) : 0), 'Break (Trickshot)');
+        }
+        u.state.trick = Math.min(3, u.state.trick + 1);
+        G(sim, u, 10);
+        if (E(u) >= 2 && u.state.e2Turn !== sim.turnId) { u.state.e2Turn = sim.turnId; sim.gainSP(1, u); self(sim, u, 'boothillE2', { be: 0.3 }, 2); }
+        u.state.standoff = 0;
+      },
+    },
+    // ------------------------------------------------------------------ 1317 Rappa
+    1317: {
+      desc: 'Talent Charge: +1 per Weakness Break (main enemy assumed elite: +1 more and +10 Energy), max 10 (E6: 15, starts with 5). The 3rd hit of each Enhanced Basic ATK adds Break DMG to all enemies: 60% + 50% per Charge of her Imaginary Break DMG, with 2 + Charge Toughness DMG ignoring Weakness, using all Charge (E6: +5 after). Withered Leaf: a Break makes enemies take +2% Break DMG (+1% per 100 ATK above 2400, max +8%) for 2 turns. E1: Sealform ignores 15% DEF. E2: the first 2 hits deal 50% more Toughness DMG to the target. E4: Sealform: all allies +12% SPD.',
+      battleStart(sim, u) { u.state.charge = E(u) >= 6 ? 5 : 0; },
+      cap(u) { return E(u) >= 6 ? 15 : 10; },
+      weaknessBreak(sim, u, by, e) {
+        u.state.charge = Math.min(this.cap(u), u.state.charge + 1 + (e === sim.enemies()[0] ? 1 : 0));
+        if (e === sim.enemies()[0]) G(sim, u, 10);
+        const atk = st(sim, u).ATK;
+        emod(sim, 'witheredLeaf', { vulnType: { Break: 0.02 + Math.min(0.08, 0.01 * Math.floor(Math.max(0, atk - 2400) / 100)) } }, 2);
+      },
+      ult(sim, u) {
+        if (E(u) >= 1) self(sim, u, 'rappaE1', { defIgnore: 0.15 }, Infinity);
+        if (E(u) >= 4) team(sim, 'rappaE4', { }, Infinity, { pct: 0.12 });
+      },
+      action(sim, u, t) {
+        if (t !== 'Enhanced' || E(u) < 2) return;
+        const ab = AD().abilityFor(sim, u, 'Enhanced');
+        if (ab && ab.tough) AD().applyToughness(sim, u, { tough: { one: (ab.tough.one - 15) * 0.5 } }, u);
+      },
+      afterDamage(sim, u, act) {
+        if (act === 'Enhanced') {
+          const c = u.state.charge;
+          AD().applyToughness(sim, u, { tough: { all: (2 + c) * 3 } }, u);
+          sim.addDamage(u, AD().breakDamage(sim, u) * (0.6 + 0.5 * c) * n(sim), 'Break (Talent)');
+          u.state.charge = E(u) >= 6 ? Math.min(this.cap(u), 5) : 0;
+        }
+        if (!(u.state.ink > 0)) { sim.removeBuff(u, 'rappaE1'); sim.units.forEach((x) => sim.removeBuff(x, 'rappaE4')); }
+      },
+    },
+    // ------------------------------------------------------------------ 1321 The Dahlia
+    1321: {
+      desc: 'Dance Partners (her and the chosen teammate): their attacks on Broken enemies convert Toughness DMG into 60% Super Break (E1: everyone, Partners 100%); her follow-up (5 × 30%, E4: 10) converts at 200%. Zone (Skill, 3 turns): +50% Weakness Break Efficiency and Toughness DMG on unbroken enemies also becomes Super Break. Ultimate: Wilt (−18% DEF, 4 turns) implants Weakness; Outgrow: +30% SPD for 2 turns, 20 Fire Toughness DMG to all enemies and +10% Max Energy (up to 50% total). Yet Another Funeral: teammates +24% of her Break Effect + 50% for 1 turn at battle start, re-applied for 3 turns whenever a healer / shielder teammate acts. E1: Partners\' first attack on each enemy removes 25% of its Toughness. E2: −20% All-Type RES; Wilt at battle start. E4: follow-up: +12% DMG taken for 2 turns. E6: Partners +150% Break Effect; follow-up advances Partners 20%.',
+      partners(sim, u) { const tg = sim.targetOf(u); return tg && tg !== u ? [u, tg] : [u]; },
+      battleStart(sim, u) {
+        u.state.outgrow = 0; u.state.e1Done = new Set();
+        const ps = this.partners(sim, u);
+        if (E(u) >= 1) sim.chars().forEach((a) => sim.addBuff(a, { id: 'dancePartner', stats: { superBreak: ps.includes(a) ? 1.0 : 0.6 }, turns: Infinity }));
+        else ps.forEach((a) => sim.addBuff(a, { id: 'dancePartner', stats: { superBreak: 0.6 }, turns: Infinity }));
+        self(sim, u, 'dahliaFUA', { superBreak_FollowUp: 2 }, Infinity);
+        if (E(u) >= 6) ps.forEach((a) => sim.addBuff(a, { id: 'dahliaE6', stats: { be: 1.5 }, turns: Infinity }));
+        if (E(u) >= 2) { emod(sim, 'dahliaE2', { res: 0.2 }, Infinity); emod(sim, 'wilt', { def: 0.18 }, 3); }
+        this.funeral(sim, u, 1);
+      },
+      funeral(sim, u, turns) {
+        const k = 0.24 * (st(sim, u).be || 0) + 0.5;
+        sim.allies(u).forEach((a) => sim.addBuff(a, { id: 'funeral', stats: { be: k }, turns }));
+      },
+      allyAction(sim, u, a) {
+        if (a.kind === 'char' && ['Abundance', 'Preservation'].includes(a.cfg.char.path) && u.state.funTurn !== sim.turnId) { u.state.funTurn = sim.turnId; this.funeral(sim, u, 3); }
+      },
+      allyAttack(sim, u, a, t) {
+        if (E(u) < 1 || !this.partners(sim, u).includes(a)) return;
+        const e = sim.enemies()[0];
+        if (e && !u.state.e1Done.has(e) && !e.broken) {
+          u.state.e1Done.add(e);
+          e.tough -= 0.25 * (sim.enemyToughness || 160);
+          if (e.tough <= 1e-9) sim.breakEnemy(e, a);
+        }
+      },
+      ult(sim, u) {
+        sim.addBuff(u, { id: 'outgrow', pct: 0.3, turns: 2 });
+        if (u.state.outgrow < 0.5) { u.state.outgrow += 0.1; F(sim, u, 0.1 * u.maxEnergy); }
+      },
+      afterDamage(sim, u, act) {
+        if (act === 'Ult') AD().applyToughness(sim, u, { tough: { all: 20 * 3 } }, u);
+        if (isAtk(act) && act !== 'FollowUp') this.allyAttack(sim, u, u, act);
+      },
+      followUpDone(sim, u) {
+        if (E(u) >= 4) emod(sim, 'dahliaE4', { vuln: 0.12 }, 2);
+        if (E(u) >= 6) this.partners(sim, u).forEach((a) => sim.advance(a, 0.2));
+      },
+      dmgScale(sim, u, act) { return act === 'FollowUp' && E(u) >= 4 ? 2 : 1; },
+    },
   };
 
   window.AVAuditKits = kits;

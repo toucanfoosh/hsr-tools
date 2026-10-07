@@ -353,7 +353,7 @@
         u.state.charge = (u.state.charge || 0) + n;
         while (u.state.charge >= 8) { u.state.charge -= 8; followUp(sim, u, 10); }
       },
-      action(sim, u, t) { if (t === 'Basic') this.charge(sim, u, 1); },
+      action(sim, u, t) { if (t === 'Basic') this.charge(sim, u, sim.targetsHit(u, t)); },
       ult(sim, u) { this.charge(sim, u, sim.targetsHit(u, 'Ult')); },
       allyAttack(sim, u, actor, t) {
         if (actor !== target(sim, u) || t === 'FollowUp') return;
@@ -362,13 +362,7 @@
         this.charge(sim, u, n);
       },
     },
-    1315: { // Boothill: Skill (Standoff) gives no Energy and doesn't end the turn; Enhanced Basic 30, no SP.
-      desc: 'Energy: Skill gives none (Standoff: his next 2 turns use the Enhanced Basic, 30 Energy, no SP). Pocket Trickshot (on Weakness Break) is not simulated.',
-      action(sim, u, t) { if (t === 'Skill') u.state.standoff = 2; else if (t === 'Enhanced') u.state.standoff -= 1; },
-      actionType(sim, u) { return u.state.standoff > 0 ? 'Enhanced' : undefined; },
-      energyFor(sim, u, t) { return t === 'Skill' ? 0 : t === 'Enhanced' ? 30 : undefined; },
-      spCost(sim, u, t) { return t === 'Enhanced' ? 0 : undefined; },
-    },
+    1315: { desc: 'Energy: see the audit kit (Standoff).' }, // Boothill
     1317: { // Rappa: Sealform (3 Enhanced Basics, 20 Energy each, no SP); E1 +20 on exit.
       desc: 'Energy: Sealform (after Ultimate): 3 Enhanced Basic ATKs (20 Energy each, no SP), then E1: +20.',
       ult(sim, u) { u.state.ink = 3; },
