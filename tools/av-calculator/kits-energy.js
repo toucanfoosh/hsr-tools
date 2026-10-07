@@ -701,7 +701,8 @@
         if (t === 'Skill') sim.addPunchline(5, u);
         if (t === 'Enhanced' && u.state.god === 0) u.state.mmr = 0;
       },
-      ult(sim, u) { u.state.mmr = 20; u.state.box = 0; },
+      // Secret Level Maxed: +20 on entering Godmode (MMR isn't spent; it clears when Godmode ends).
+      ult(sim, u) { u.state.mmr = Math.min(60 + 240, u.state.mmr + 20); u.state.box = 0; },
       elation(sim, u, info) {
         let n = u.state.god ? 0 : 15;
         if (info.punchline >= 20) n += 20;
