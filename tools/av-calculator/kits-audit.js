@@ -2449,6 +2449,100 @@
       afterDamage(sim, u, act) { if (isAtk(act)) this.saberAttack(sim, u); if (act === 'Skill') { u.state.interest = 0; } },
       allyAttack(sim, u, a) { if (a.cfg && a.cfg.char.id === '1014') this.saberAttack(sim, u); },
     },
+
+    // ------------------------------------------------------------------ 1510 Himeko • Nova
+    1510: {
+      desc: 'Talent: +20% RES PEN and +80% CRIT DMG (E4: after an Assist Skill the RES PEN goes to all allies, +10% more for her). Ultimate uses its "up to" totals (Starblazer beams and pulses) plus the 3-hit Final Hit. Companion Protocol: Verdict: she gets +100% DMG and +100% Ultimate DMG; Decimation: allies +100% CRIT DMG and +100% Skill CRIT DMG (Assist Skills count as Skills). E2: Ultimate and Assist Skill DMG ×1.3. E6: +20% Fire RES PEN; Assist Skills +75% DMG; pulses at 6 Source Energy add 160% to all enemies.',
+      battleStart(sim, u) {
+        self(sim, u, 'novaTalent', { resPen: 0.2, cd: 0.8, ...(E(u) >= 6 ? { resPen_Assist: 0 } : {}) }, Infinity);
+        if (E(u) >= 6) self(sim, u, 'novaE6', { resPen: 0.2 }, Infinity);
+        self(sim, u, 'verdict', { dmg: (s, a) => (a.state.protocol === 'verdict' ? 1 : 0), dmg_Ult: (s, a) => (a.state.protocol === 'verdict' ? 1 : 0) }, Infinity);
+        team(sim, 'decimation', { cd: (s, a) => (u.state.protocol === 'decimation' ? 1 : 0), cd_Skill: (s, a) => (u.state.protocol === 'decimation' ? 1 : 0) }, Infinity);
+      },
+      assistUsed(sim, u) { if (E(u) >= 4) { team(sim, 'novaE4', { resPen: 0.2 }, Infinity); self(sim, u, 'novaE4self', { resPen: 0.1 }, Infinity); } },
+      allyAction(sim, u, a, t) { if (t === 'Assist') this.assistUsed(sim, u); },
+      dmgScale(sim, u, act) {
+        let f = 1;
+        if (E(u) >= 2 && (act === 'Ult' || act === 'Assist')) f *= 1.3;
+        if (E(u) >= 6 && act === 'Assist') f *= 1 + 0.75 / (1 + st(sim, u).dmg);
+        return f;
+      },
+      extraDamage(sim, u, act) { return act === 'Ult' && E(u) >= 6 ? std(sim, u, { atk: 1.6 * n(sim) }, 'Ult') : 0; },
+    },
+    // ------------------------------------------------------------------ 1512 Robin • Summeretto
+    1512: {
+      desc: 'Summer Songbirds have 70% of her Max HP (their Chirrup Quartet scales with it; E6: ×2). Rebuilt Harmony: +50% CRIT Rate. Fever Zone: allies ignore 15% + 0.5% per Vibe of DEF. Deviated Chords: allies who give her Vibes get +(16% + 0.4% per Vibe) of her Max HP as ATK if their ATK is higher, else +(40% + 1.5% per Vibe) CRIT DMG, for 2 turns. Improvised Blues: with a healer / shielder on the team, the first Vibes gain each turn regenerates 3 fixed Energy. E1: the Songbirds tally 100% of allies\' non-True DMG; each Chirrup adds (11% + 0.1% per Vibe) of it as True DMG and clears half. E2: allies +18% RES PEN; the first ability each turn that gives Vibes gives 2 more.',
+      battleStart(sim, u) {
+        u.state.tally = 0;
+        self(sim, u, 'rebuilt', { cr: 0.5 }, Infinity);
+        team(sim, 'feverZone', { defIgnore: (s) => (u.state.fever ? 0.15 + 0.005 * (u.state.vibes || 0) : 0) }, Infinity);
+        if (E(u) >= 2) team(sim, 'robinSE2', { resPen: 0.18 }, Infinity);
+        u.state.groove = sim.allies(u).some((a) => ['Abundance', 'Preservation'].includes(a.cfg.char.path));
+      },
+      chords(sim, u, a) {
+        if (!a || a.kind !== 'char' || a === u) return;
+        const s = st(sim, u), v = u.state.vibes || 0;
+        if (st(sim, a).ATK > s.ATK) sim.addBuff(a, { id: 'deviated', stats: { atk: (0.16 + 0.004 * v) * s.HP }, turns: 2 });
+        else sim.addBuff(a, { id: 'deviated', stats: { cd: 0.4 + 0.015 * v }, turns: 2 });
+      },
+      allyAction(sim, u, a, t) {
+        const K = window.AVEffects.kits[1512];
+        if (a.kind === 'countdown' || !(isAtk(t) || t === 'Summon')) return;
+        const who = a.owner && a.kind === 'summon' ? a.owner : a;
+        this.chords(sim, u, who);
+        if (u.state.turnSeen !== sim.turnId) {
+          u.state.turnSeen = sim.turnId;
+          if (u.state.groove) F(sim, u, 3);
+          if (E(u) >= 2 && K && K.vibes) K.vibes(sim, u, 2);
+        }
+      },
+      damageDealt(sim, u, by, amt, label) {
+        if (E(u) < 1 || !amt || /True/.test(label || '') || !by || (by.kind !== 'char' && !by.owner)) return;
+        u.state.tally += amt;
+      },
+      dmgScale(sim, u, act, extra, unit) { return unit && unit.name === 'Summer Songbirds' ? 0.7 * (E(u) >= 6 ? 2 : 1) : 1; },
+      extraDamage(sim, u, act, extra, unit) {
+        if (!unit || unit.name !== 'Summer Songbirds' || E(u) < 1) return 0;
+        const d = (0.11 + 0.001 * (u.state.vibes || 0)) * u.state.tally;
+        u.state.tally *= 0.5;
+        if (d > 0) sim.addDamage(u, d, 'True DMG');
+        return 0;
+      },
+    },
+    // ------------------------------------------------------------------ 1513 Aventurine • Waveflair
+    1513: {
+      desc: 'Party in Perfect Paradise: at 140+ SPD +30% Elation and +1% per SPD above 140 (max 200). Revel in Raging Tides: with other Elation allies, all allies +20% Elation and him +80% more. Sift Through Gilded Dreams: +48% CRIT DMG; a teammate\'s Basic / Skill / follow-up / Ultimate gives all allies +48% CRIT DMG for 3 turns (6 times per his Skill). "All In!" (his next Aha Elation Skill after "Cheers!"): +21% Elation DMG per Fervor it spends. E1: +24% RES PEN. E4: his Skill: allies ignore 18% DEF for 3 turns. E6: merrymakes 25%; from his 3rd Elation Skill on, all are "All In!" (outside Aha it keeps the Fervor).',
+      battleStart(sim, u) {
+        const sp = sim.spd(u), others = sim.allies(u).some((a) => a.cfg.char.path === 'Elation');
+        self(sim, u, 'party', { elation: sp >= 140 ? 0.3 + 0.01 * Math.min(200, sp - 140) : 0, cd: 0.48, ...(E(u) >= 1 ? { resPen: 0.24 } : {}), ...(E(u) >= 6 ? { merrymake: 0.25 } : {}) }, Infinity);
+        if (others) { team(sim, 'revel', { elation: 0.2 }, Infinity); self(sim, u, 'revelSelf', { elation: 0.8 }, Infinity); }
+        u.state.sift2 = 6; u.state.elations = 0;
+      },
+      snapF(u) { u.state.fervorSnap = u.state.fervor || 0; },
+      action(sim, u, t) {
+        if (t === 'Skill') { u.state.sift2 = 6; if (E(u) >= 4) team(sim, 'waveE4', { defIgnore: 0.18 }, 3); }
+        this.snapF(u);
+      },
+      ult(sim, u) { this.snapF(u); },
+      allyAttack(sim, u, a, t) {
+        if (a.kind === 'char' && ['Basic', 'Skill', 'FollowUp', 'Ult', 'Enhanced'].includes(t) && u.state.sift2 > 0) { u.state.sift2 -= 1; team(sim, 'sift', { cd: 0.48 }, 3); }
+        this.snapF(u);
+      },
+      elation(sim, u, info) {
+        u.state.elations += 1;
+        const allIn = (sim.inAha && u.state.allIn) || (E(u) >= 6 && u.state.elations > 2);
+        u.state.allInNow = allIn ? u.state.fervorSnap || 0 : 0;
+        if (allIn && sim.inAha) u.state.allIn = false;
+        if (info && info.label === 'Cheers!') u.state.allIn = true;
+        this.snapF(u);
+      },
+      extraDamage(sim, u, act, extra) {
+        if (act !== 'Elation' || !(u.state.allInNow > 0)) return 0;
+        const d = AD().elation(sim, u, 0.21 * u.state.allInNow, extra && extra.punchline != null ? extra.punchline : sim.punchline);
+        u.state.allInNow = 0;
+        return d;
+      },
+    },
   };
 
   window.AVAuditKits = kits;

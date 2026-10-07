@@ -212,6 +212,8 @@ DMG_OVERRIDES = {
     ("1414", "A Dragon's Zenith Knows No Rue"): [{"p": 0, "stat": "atk", "target": "all"}],
     ("1413", "Remembrance, Whirling, Like Rain"): [{"p": 0, "stat": "hp", "target": "main"}],  # + per 4 Memoria: kit
     ("1504", "Banquet: Insatiable Appetite"): [{"p": 0, "stat": "atk", "target": "main"}],  # + enhanced follow-up (kit)
+    ("1510", "We, Too, Stride the Stars"): [{"p": 8, "stat": "atk", "target": "main"}, {"p": 9, "stat": "atk", "target": "others"},
+                                         {"p": 6, "stat": "atk", "target": "random", "cnt": {"p": 5}}],  # "up to" totals + Final Hit
     ("1312", "G—Gonna Be Late!"): [{"p": 1, "stat": "atk", "target": "main"}],  # per hit; hit count in the kit                                     # Deep Learning buffs later attacks
 }
 
