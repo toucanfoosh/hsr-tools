@@ -203,15 +203,8 @@
   }
 
   // ---------------------------------------------------------------- team cards
-  let startEnergy = {};
   function renderTeam() {
     const team = root.querySelector('#team');
-    // Energy each character has once battle-start effects resolve (for the battle-start Ult option).
-    startEnergy = {};
-    try {
-      const r0 = simulate(state);
-      r0.units.forEach(({ unit, slot }) => { startEnergy[slot] = { have: unit.startEnergy, max: unit.maxEnergy }; });
-    } catch (e) { /* the results section reports errors */ }
     team.innerHTML = state.slots.map((s, i) => (s && CHARS[s.charId] ? slotCard(s, i) : emptySlot(i))).join('');
     updateSpeeds();
   }
