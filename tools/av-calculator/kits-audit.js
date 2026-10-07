@@ -1268,7 +1268,7 @@
         const ehr = (u.stats0 && u.stats0.ehr) || 0;
         team(sim, 'candleflame', { dmg: Math.min(0.72, 0.6 * ehr) }, Infinity);
         emod(sim, 'bsDef', { def: 0.208 }, 3);
-        if (E(u) >= 1) emod(sim, 'bsE1', { resEl: { Wind: 0.25, Physical: 0.25, Fire: 0.25, Lightning: 0.25 } }, Infinity);
+        if (E(u) >= 1) emod(sim, 'bsE1', { resEl: { Wind: 0.25, Physical: 0.25, Fire: 0.25, Thunder: 0.25 } }, Infinity);
       },
       epiphany(sim) { return (sim.enemyMods || []).some((m) => m.id === 'epiphany'); },
       add(sim, u, k, fixed) {
@@ -1692,6 +1692,243 @@
         sim.dealDamage(u, 'Skill', { label: 'Extra Skill' });
         u.state.extra = false;
       },
+    },
+
+    // ------------------------------------------------------------------ 1406 Cipher
+    1406: {
+      desc: 'Tally: 12% of the non-True DMG allies deal to the Patron (main enemy) and 8% of the rest (spread by enemy count; E1: ×1.5; Empyrean Strides: +50% at 140 SPD, +100% at 170; E6: +16%). Ultimate adds the whole tally as True DMG and clears it (E6: 20% returned). Skill: +30% ATK for 2 turns. Empyrean Strides: +25% / 50% CRIT Rate at 140 / 170 SPD. Sleight of Sky: follow-up +100% CRIT DMG. E1: follow-up +80% ATK for 2 turns. E2: her hits make enemies take +30% DMG for 2 turns. E4: allies hitting the Patron add 50% ATK Additional DMG. E6: follow-up +350% DMG.',
+      battleStart(sim, u) {
+        u.state.tally = 0;
+        self(sim, u, 'empyrean', { cr: (s, a) => { const sp = s.spd(a); return sp >= 170 ? 0.5 : sp >= 140 ? 0.25 : 0; } }, Infinity);
+        self(sim, u, 'sleight', { cd_FUA: 1 }, Infinity);
+      },
+      damageDealt(sim, u, by, amt, label) {
+        if (!amt || /True/.test(label || '') || !by || (by.kind !== 'char' && !by.owner)) return;
+        const k = n(sim), sp = sim.spd(u);
+        let rate = (0.12 + 0.08 * (k - 1)) / k;
+        rate *= (E(u) >= 1 ? 1.5 : 1) * (sp >= 170 ? 2 : sp >= 140 ? 1.5 : 1);
+        if (E(u) >= 6) rate += 0.16 / k;
+        u.state.tally += amt * rate;
+      },
+      action(sim, u, t) { if (t === 'Skill') self(sim, u, 'cipherSkill', { atkPct: 0.3 }, 2); },
+      afterDamage(sim, u, act) {
+        if (isAtk(act) && E(u) >= 2) emod(sim, 'cipherE2', { vuln: 0.3 }, 2);
+        if (act === 'Ult') {
+          const t = u.state.tally;
+          u.state.tally = E(u) >= 6 ? 0.2 * t : 0;
+          if (t > 0) sim.addDamage(u, t, 'True DMG');
+        }
+      },
+      followUpDone(sim, u) { if (E(u) >= 1) self(sim, u, 'cipherE1', { atkPct: 0.8 }, 2); },
+      allyAttack(sim, u, a) { if (E(u) >= 4 && a.kind === 'char') sim.addDamage(u, std(sim, u, { atk: 0.5 }), 'Additional'); },
+      dmgScale(sim, u, act) { return act === 'FollowUp' && E(u) >= 6 ? 1 + 3.5 / (1 + st(sim, u).dmg) : 1; },
+    },
+    // ------------------------------------------------------------------ 1407 Castorice
+    1407: {
+      autoUlt: 'Automatic at full Newbud.',
+      options: [{ key: 'hit', label: 'HP lost per enemy hit (% of Max HP)', type: 'number', def: 10, min: 0, max: 100, step: 1 }],
+      desc: 'Newbud (max 34,000 at Equilibrium Level 5-6): +1 per HP any ally loses — her Skill takes 30% of every ally\'s current HP, enemy hits per the setting — and healing from Abundance teammates (25% Max HP, up to 12% of max Newbud each). Ultimate at full Newbud summons Netherwing (HP = max Newbud). While it\'s out, ally HP loss refills Netherwing instead, and her Skill becomes Boneclaw (Joint ATK: 30% + 50% of her Max HP to all; 40% of allies\' HP). Netherwing spends each turn on Breath Scorches the Shadow (25% of its HP each: 24% → 28% → 34% of her Max HP to all, +30% DMG per Breath this turn, max 6); at ≤25% HP the last Breath drops it to 1 HP and triggers Wings Sweep the Ruins (6 × 40% bounces; E6: 9), which also fires when it leaves. Talent: +20% DMG per ally HP loss (3 stacks, 3 turns). Inverted Torch: +40% SPD at ≥50% HP. E1: ×1.25 DMG (enemy HP thresholds averaged). E2: 2 Ardent Will pay for Breaths and advance her 100%; the next Boneclaw gives 30% Newbud. E6: +20% Quantum RES PEN.',
+      battleStart(sim, u) {
+        u.state.hp = new Map(sim.chars().map((a) => [a, 1]));
+        u.state.newbud = 0; u.state.max = 34000; // Equilibrium Level 5-6
+        u.state.nwHp = 0; u.state.prog = 0; u.state.ardent = 0;
+        if (E(u) >= 6) self(sim, u, 'castoriceE6', { resPen: 0.2 }, Infinity);
+        this.torch(sim, u);
+      },
+      ultReady(sim, u) { return u.state.newbud >= u.state.max - 1e-6; },
+      canUlt(sim, u) { return !this.nw(sim, u) && u.state.newbud >= u.state.max - 1e-6; },
+      nw(sim, u) { return sim.units.find((x) => x.owner === u && x.name === 'Netherwing' && x.alive); },
+      torch(sim, u) { if ((u.state.hp.get(u) || 0) >= 0.5) sim.addBuff(u, { id: 'torch', pct: 0.4, turns: Infinity }); else sim.removeBuff(u, 'torch'); },
+      lose(sim, u, a, frac, ofCurrent) {
+        const cur = u.state.hp.get(a); if (cur === undefined) return;
+        const amt = Math.max(0, Math.min(cur - 0.001, ofCurrent ? cur * frac : frac));
+        if (amt <= 0) return;
+        u.state.hp.set(a, cur - amt);
+        const abs = amt * (a.stats0 ? st(sim, a).HP : 0);
+        if (this.nw(sim, u)) u.state.nwHp = Math.min(1, u.state.nwHp + abs / u.state.max);
+        else u.state.newbud = Math.min(u.state.max, u.state.newbud + abs);
+        self(sim, u, 'desolation', { dmg: 0.2 }, 3, { maxStacks: 3 });
+        if (a === u) this.torch(sim, u);
+      },
+      hit(sim, u) { this.lose(sim, u, u, (+O(u, 'hit') || 0) / 100, false); },
+      allyHit(sim, u, v) { if (v.kind === 'char') this.lose(sim, u, v, (+O(u, 'hit') || 0) / 100, false); },
+      allyAction(sim, u, a) {
+        if (a.kind !== 'char' || a.cfg.char.path !== 'Abundance') return;
+        for (const c of sim.chars()) {
+          const cur = u.state.hp.get(c); if (cur === undefined) continue;
+          const heal = Math.min(1 - cur, 0.25);
+          u.state.hp.set(c, cur + heal);
+          const abs = Math.min(heal * (c.stats0 ? st(sim, c).HP : 0), 0.12 * u.state.max);
+          if (this.nw(sim, u)) u.state.nwHp = Math.min(1, u.state.nwHp + abs / u.state.max);
+          else u.state.newbud = Math.min(u.state.max, u.state.newbud + abs);
+        }
+        this.torch(sim, u);
+      },
+      actionType(sim, u) { return this.nw(sim, u) ? 'Enhanced' : undefined; },
+      spCost(sim, u, t) { return t === 'Enhanced' ? 1 : undefined; },
+      energyFor(sim, u, t) { return t === 'Enhanced' || t === 'Skill' ? 0 : undefined; },
+      action(sim, u, t) {
+        if (t === 'Skill' || t === 'Enhanced') {
+          for (const a of sim.chars()) this.lose(sim, u, a, t === 'Enhanced' ? 0.4 : 0.3, true);
+          if (t === 'Enhanced' && u.state.e2Bud) { u.state.e2Bud = false; u.state.newbud = Math.min(u.state.max, u.state.newbud + 0.3 * u.state.max); }
+        }
+      },
+      ult(sim, u) {
+        u.state.newbud = 0; u.state.nwHp = 1; u.state.prog = 0;
+        if (E(u) >= 2) { u.state.ardent = 2; u.state.e2Bud = true; }
+      },
+      sweep(sim, u) { return std(sim, u, { hp: 0.4 * (E(u) >= 6 ? 9 : 6) }, 'Memo'); },
+      memoGone(sim, u, m) { if (m.name === 'Netherwing') sim.addDamage(u, this.sweep(sim, u), 'Wings Sweep the Ruins'); },
+      dmgType(sim, u, act, extra, unit) { return unit && unit.name === 'Netherwing' ? 'Memo' : undefined; },
+      dmgScale(sim, u, act, extra, unit) {
+        let f = E(u) >= 1 ? 1.25 : 1;
+        if ((unit && unit.name === 'Netherwing') || act === 'Enhanced') f = 0;
+        return f;
+      },
+      extraDamage(sim, u, act, extra, unit) {
+        const e1 = E(u) >= 1 ? 1.25 : 1;
+        if (act === 'Enhanced' && unit === u) return std(sim, u, { hp: (0.3 + 0.5) * n(sim) }, 'Skill') * e1;
+        if (!unit || unit.name !== 'Netherwing') return 0;
+        const MULT = [0.24, 0.28, 0.34], s = st(sim, u);
+        let total = 0;
+        for (let k = 0; k < 12; k++) {
+          let last = false;
+          if (u.state.ardent > 0) { u.state.ardent -= 1; sim.advance(u, 1); }
+          else if (u.state.nwHp > 0.25 + 1e-9) u.state.nwHp -= 0.25;
+          else { last = true; u.state.nwHp = 0.0001; }
+          const m = MULT[Math.min(2, u.state.prog)]; u.state.prog += 1;
+          const ww = 0.3 * Math.min(6, k + 1);
+          total += std(sim, u, { hp: m * n(sim) }, 'Memo') * (1 + s.dmg + ww) / (1 + s.dmg);
+          if (last) { total += this.sweep(sim, u); break; }
+        }
+        return total * e1;
+      },
+    },
+    // ------------------------------------------------------------------ 1408 Phainon
+    1408: {
+      desc: 'Khaslana: +80% ATK and +270% Max HP; Enhanced Skill alternates Calamity: Soulscorch Edict (Counter after enemies act, +20% per Soulscorch stack: 1 + each enemy; E4: +4) and, at 4 Scourge, Foundation: Stardeath Verdict (16 × 45% bounces + 450% split); the final hit is his Ultimate. Shine with Valor: +50% ATK at battle start and each time the transformation ends (2 stacks). Talent: +30% CRIT DMG for 3 turns when a teammate\'s ability targets him. Bide in Flames: +45% DMG for 4 turns when a healer / shielder teammate acts. E1: Ultimate +50% CRIT DMG for 3 turns. E2: Khaslana +20% Physical RES PEN. E6: Stardeath Verdict adds 36% of its DMG as True DMG.',
+      battleStart(sim, u) {
+        self(sim, u, 'valor', { atkPct: 0.5 }, Infinity, { maxStacks: 2 });
+        self(sim, u, 'khaslana', { atkPct: (s, a) => (a.state.khas ? 0.8 : 0), hpPct: (s, a) => (a.state.khas ? 2.7 : 0), resPen: (s, a) => (a.state.khas && E(a) >= 2 ? 0.2 : 0) }, Infinity);
+      },
+      targetedCD(sim, u) { self(sim, u, 'pyricCD', { cd: 0.3 }, 3); },
+      allyAction(sim, u, a, t) {
+        const kit = a.kind === 'char' && sim.kitOf(a);
+        if (kit && kit.allyTarget && kit.allyTarget[t] && sim.targetOf(a) === u) this.targetedCD(sim, u);
+        if (a.kind === 'char' && ['Abundance', 'Preservation'].includes(a.cfg.char.path) && u.state.bideTurn !== sim.turnId) { u.state.bideTurn = sim.turnId; self(sim, u, 'bide', { dmg: 0.45 }, 4); }
+      },
+      allyUlt(sim, u, a) { const kit = sim.kitOf(a); if (kit && kit.allyTarget && kit.allyTarget.Ultimate && sim.targetOf(a) === u) this.targetedCD(sim, u); },
+      ult(sim, u) { if (E(u) >= 1) self(sim, u, 'phainonE1', { cd: 0.5 }, 3); u.state.wasKhas = true; },
+      turnStart(sim, u) {
+        u.state.pre = u.state.scourge || 0;
+        if (u.state.wasKhas && !u.state.khas) { u.state.wasKhas = false; self(sim, u, 'valor', { atkPct: 0.5 }, Infinity, { maxStacks: 2 }); }
+      },
+      dmgAbility(sim, u, act) {
+        if (act === 'Final') return 'He Who Bears the World Must Burn';
+        if (act !== 'Enhanced') return undefined;
+        if ((u.state.pre || 0) >= 4) return 'Foundation: Stardeath Verdict';
+        return n(sim) >= 2 ? 'Calamity: Soulscorch Edict' : 'Creation: Bloodthorn Ferry';
+      },
+      dmgType(sim, u, act) { return act === 'Final' ? 'Ult' : act === 'Enhanced' && (u.state.pre || 0) < 4 && n(sim) < 2 ? 'Basic' : act === 'Enhanced' ? 'Skill' : undefined; },
+      dmgScale(sim, u, act) {
+        if (act === 'Enhanced' && (u.state.pre || 0) < 4 && n(sim) >= 2) return 1 + 0.2 * (1 + n(sim) + (E(u) >= 4 ? 4 : 0));
+        return 1;
+      },
+      afterDamage(sim, u, act) {
+        if (E(u) >= 6 && act === 'Enhanced' && (u.state.pre || 0) >= 4) {
+          const ev = [...sim.events].reverse().find((e) => e.unit === u && e.dmg);
+          if (ev) sim.addDamage(u, 0.36 * ev.dmg, 'True DMG');
+        }
+      },
+    },
+    // ------------------------------------------------------------------ 1409 Hyacine
+    1409: {
+      desc: 'Healing tally from her Skill (8% Max HP + 160 to everyone), Ultimate (10% + 200) and Little Ica\'s Talent (2% + 20 to an ally whose HP drops, and to everyone during After Rain), with Outgoing Healing. After Rain (Ultimate, 3 of her turns): allies +30% Max HP + 600 (E1: +50% more), and after each of her abilities Little Ica uses Rainclouds: 20% of the tally as Wind DMG to all enemies, clearing 50% of it (E6: 12%). Talent: each heal gives Ica +80% DMG for 2 turns (3 stacks). Gloomy Grin: +100% CRIT Rate. Tempestuous Halt: above 200 SPD, +20% Max HP and +1% Outgoing Healing per excess SPD (E4: +2% CRIT DMG too; max 200). E2: allies whose HP drops get +30% SPD for 2 turns. E6: while Ica is out, allies +20% All-Type RES PEN.',
+      battleStart(sim, u) {
+        u.state.tally = 0; u.state.rain = 0; u.state.ica = false;
+        self(sim, u, 'gloomy', { cr: 1 }, Infinity);
+        const ex = Math.min(200, Math.max(0, sim.spd(u) - 200));
+        if (sim.spd(u) > 200) self(sim, u, 'tempest', { hpPct: 0.2, heal: 0.01 * ex, ...(E(u) >= 4 ? { cd: 0.02 * ex } : {}) }, Infinity);
+      },
+      heal(sim, u, pct, flat, targets) {
+        const s = st(sim, u);
+        u.state.tally += (pct * s.HP + flat) * (1 + (s.heal || 0)) * targets;
+        self(sim, u, 'icaDmg', { dmg_Memo: 0.8 }, 2, { maxStacks: 3 });
+      },
+      summonIca(sim, u) { if (!u.state.ica) { u.state.ica = true; if (E(u) >= 6) team(sim, 'hyacineE6', { resPen: 0.2 }, Infinity); } },
+      action(sim, u, t) {
+        if (t === 'Skill') { this.summonIca(sim, u); this.heal(sim, u, 0.08, 160, sim.chars().length); this.heal(sim, u, 0.1, 200, 1); }
+      },
+      ult(sim, u) {
+        this.summonIca(sim, u);
+        this.heal(sim, u, 0.1, 200, sim.chars().length); this.heal(sim, u, 0.12, 240, 1);
+        u.state.rain = 3;
+        team(sim, 'afterRain', { hpPct: 0.3 + (E(u) >= 1 ? 0.5 : 0), hp: 600 }, Infinity);
+      },
+      turnStart(sim, u) { if (u.state.rain > 0 && --u.state.rain === 0) sim.units.forEach((x) => sim.removeBuff(x, 'afterRain')); },
+      icaHeal(sim, u, v) {
+        if (!u.state.ica) return;
+        this.heal(sim, u, 0.02, 20, 1 + (u.state.rain > 0 ? sim.chars().length : 0));
+        if (E(u) >= 2 && v) sim.addBuff(v, { id: 'hyacineE2', pct: 0.3, turns: 2 });
+      },
+      hit(sim, u) { this.icaHeal(sim, u, u); },
+      allyHit(sim, u, v) { if (v.kind === 'char') this.icaHeal(sim, u, v); },
+      afterDamage(sim, u, act) {
+        if (!(u.state.rain > 0) || !u.state.ica) return;
+        const s = st(sim, u), base = 0.2 * u.state.tally;
+        u.state.tally *= E(u) >= 6 ? 0.88 : 0.5;
+        if (base > 0 && s.HP > 0) {
+          const ev = sim.record(u, 'FollowUp', { label: 'Little Ica: Rainclouds' });
+          ev.dmg = std(sim, u, { hp: base / s.HP * n(sim) }, 'Memo');
+          sim.addDamage(u, ev.dmg, 'Little Ica');
+        }
+      },
+    },
+    // ------------------------------------------------------------------ 1410 Hysilens
+    1410: {
+      desc: 'Talent: each ally attack inflicts Wind Shear / Bleed / Burn / Shock in turn on the enemies it hit (25% ATK DoT, 2 turns; E1: twice). Zone (battle start, Ultimate; 3 of her turns): each DoT instance an enemy takes, and each ally attack on a DoT\'d enemy, triggers an 80% ATK Physical DoT (8 times per Zone; E6: 12 and +20%). The Bubble of Banquets: Ultimate makes all DoTs deal 150% of their DMG at once. The Fiddle of Pearls: +15% DMG per 10% Effect Hit Rate above 60% (max 90%; E2: all allies while the Zone is up). E1: allies\' DoT ×1.16. E4: Zone −20% All-Type RES.',
+      STATES: ['Wind Shear', 'Bleed', 'Burn', 'Shock'],
+      battleStart(sim, u) {
+        u.state.next = 0;
+        const ehr = st(sim, u).ehr || 0;
+        u.state.fiddle = Math.min(0.9, 0.15 * Math.floor(Math.max(0, ehr - 0.6 + 1e-9) / 0.1));
+        self(sim, u, 'fiddle', { dmg: u.state.fiddle }, Infinity);
+        if (E(u) >= 1) team(sim, 'hysE1', { dotMult: 0.16 }, Infinity);
+        this.zone(sim, u);
+      },
+      zone(sim, u) {
+        u.state.zone = 3; u.state.procs = E(u) >= 6 ? 12 : 8;
+        if (E(u) >= 4) emod(sim, 'hysE4', { res: 0.2 }, Infinity);
+        if (E(u) >= 2) sim.allies(u).forEach((a) => sim.addBuff(a, { id: 'fiddleTeam', stats: { dmg: u.state.fiddle }, turns: Infinity }));
+      },
+      endZone(sim, u) {
+        sim.enemyMods = (sim.enemyMods || []).filter((m) => m.id !== 'hysE4');
+        sim.units.forEach((x) => sim.removeBuff(x, 'fiddleTeam'));
+      },
+      turnStart(sim, u) { if (u.state.zone > 0 && --u.state.zone === 0) this.endZone(sim, u); },
+      zoneDot(sim, u, k) {
+        for (let i = 0; i < k && u.state.zone > 0 && u.state.procs > 0; i++) {
+          u.state.procs -= 1;
+          const d = { src: u, mult: { atk: 0.8 * (E(u) >= 6 ? 1.2 : 1) }, id: `${u.key}:zone`, targets: 1 };
+          sim.addDamage(u, AD().dotDamage(sim, d), 'Zone DoT');
+        }
+      },
+      enemyTurnStart(sim, u, e) { const k = (sim.dots || []).filter((d) => sim.enemies().indexOf(e) < d.targets).length; if (k) this.zoneDot(sim, u, k); },
+      inflict(sim, u, a, t) {
+        const id = this.STATES[u.state.next++ % 4];
+        const ab = a.kind === 'char' ? AD().abilityFor(sim, a, t) : null;
+        sim.addDot({ id: `${u.key}:${id}`, src: u, mult: { atk: 0.25 * (E(u) >= 1 ? 2 : 1) }, turns: 2, targets: ab ? sim.dotTargets(ab) : 1 });
+        if ((sim.dots || []).length) this.zoneDot(sim, u, 1);
+      },
+      allyAttack(sim, u, a, t) { if (t !== 'Elation') this.inflict(sim, u, a, t); },
+      afterDamage(sim, u, act) {
+        if (isAtk(act)) this.inflict(sim, u, u, act);
+        if (act === 'Ult') {
+          const per = (sim.dots || []).reduce((s, d) => s + AD().dotDamage(sim, d) * d.targets, 0);
+          if (per > 0) sim.addDamage(u, 1.5 * per, 'DoT detonation');
+        }
+      },
+      ult(sim, u) { this.zone(sim, u); },
     },
   };
 

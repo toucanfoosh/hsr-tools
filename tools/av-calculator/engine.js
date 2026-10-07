@@ -328,6 +328,8 @@
       if (!u) return;
       u.dmgTotal = (u.dmgTotal || 0) + amt;
       this.damageLog.push({ unit: u, av: this.now, amt, label, cycle: cycleOf(this.now, this.firstCycle, this.cycleLen) });
+      // Kits that tally damage (Cipher) see every credited amount once.
+      if (!this.inTally) { this.inTally = true; this.fireEvery('damageDealt', u, amt, label); this.inTally = false; }
     }
 
     // ---------- enemies ----------

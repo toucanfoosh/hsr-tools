@@ -485,7 +485,7 @@
   function dotDamage(sim, d) {
     const st = liveStats(sim, d.src);
     const base = (d.mult.atk || 0) * st.ATK + (d.mult.hp || 0) * st.HP + (d.mult.def || 0) * st.DEF;
-    return base * (1 + st.dmg + (st.dotDmg || 0)) * common(sim, { ...st, cr: 0 }, 'DoT') * sim.fireProduct(d.src, 'dotScale', d);
+    return base * (1 + st.dmg + (st.dotDmg || 0)) * (1 + (st.dotMult || 0)) * common(sim, { ...st, cr: 0 }, 'DoT') * sim.fireProduct(d.src, 'dotScale', d);
   }
 
   window.AVDamage = { abilityFor, breakDamage, applyToughness, dotDamage, staticStats, liveStats, dealDamage, standard, elation, punchlineMult, kits, ELATION_LEVEL_MULT };
