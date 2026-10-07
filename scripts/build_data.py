@@ -167,7 +167,7 @@ def parse_damage(desc):
             lt, lp = tail.lower(), pre.lower()
             # Only damage: "... DMG equal to X%", "deals / dealing X% ... DMG". Buffs such as
             # "ATK by an amount equal to X% of Robin's ATK" are skipped.
-            if kind is None and re.search(r"(?:offset|absorb)s? dmg equal to\s*$", lp[-40:]):
+            if kind is None and re.search(r"(?:offset|absorb|block)(?:s|ing)? dmg equal to\s*$", lp[-40:]):
                 continue
             if kind is None and not re.search(r"(?:dmg|dot) (?:equal to|to [^.]{0,40}equal to)(?: a total of)?(?: up to)?\s*\(?$|deal(?:s|ing)?\s+$|dmg equal to up to\s*$", lp[-60:]):
                 continue
