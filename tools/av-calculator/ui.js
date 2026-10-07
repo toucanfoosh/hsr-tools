@@ -200,8 +200,15 @@
   }
 
   // ---------------------------------------------------------------- team cards
+  let startEnergy = {};
   function renderTeam() {
     const team = root.querySelector('#team');
+    // Energy each character has once battle-start effects resolve (for the battle-start Ult option).
+    startEnergy = {};
+    try {
+      const r0 = simulate(state);
+      r0.units.forEach(({ unit, slot }) => { startEnergy[slot] = { have: unit.startEnergy, max: unit.maxEnergy }; });
+    } catch (e) { /* the results section reports errors */ }
     team.innerHTML = state.slots.map((s, i) => (s && CHARS[s.charId] ? slotCard(s, i) : emptySlot(i))).join('');
     updateSpeeds();
   }
@@ -358,7 +365,11 @@
 
   // Manual Ultimate schedule: first Ultimate after turn N (or at battle start), then every M of
   // this character's own turns, with a preview of the resulting turns.
-  function manualUlt(s, f) {
+  function manualUlt(s, i, f) {
+    const se = startEnergy[i];
+    // Possible only if Energy is already full once the battle starts.
+    const startOk = !se || !(se.max > 0) || se.have >= se.max - 1e-6;
+    if (!startOk && +s.ultFirst === 0) s.ultFirst = Math.max(1, +s.ultFirstSaved || 3);
     const atStart = +s.ultFirst === 0;
     const first = atStart ? 0 : Math.max(1, +s.ultFirst || 1);
     const every = Math.max(1, +s.ultEvery || 1);
@@ -372,7 +383,8 @@
         <label class="field"><span>Repeat every</span>
           <input type="number" min="1" ${f('ultEvery')} value="${every}"></label>
       </div>
-      <label class="check"><input type="checkbox" ${f('ultStart')} ${atStart ? 'checked' : ''}> First Ult at battle start</label>
+      ${startOk ? `<label class="check"><input type="checkbox" ${f('ultStart')} ${atStart ? 'checked' : ''}> First Ult at battle start</label>`
+        : `<div class="hint muted small">No Ult at battle start: ${Math.round(se.have)}/${se.max} Energy after battle-start effects.</div>`}
       <div class="hint ult-preview">${preview}</div>
     </div>`;
   }
@@ -404,7 +416,7 @@
           <input type="text" list="patterns" ${f('pattern')} value="${esc(s.pattern)}"></label>
         ${ult}
       </div>
-      ${manual ? manualUlt(s, f) : ''}
+      ${manual ? manualUlt(s, i, f) : ''}
       ${hasEnergy ? `<label class="check"><input type="checkbox" ${f('errRope')} ${s.errRope ? 'checked' : ''}> Energy Regen rope${s.errRope && s.errRopeValue != null ? ` (${fmt(s.errRopeValue * 100, 1)}%)` : ''}
         <span class="muted small">· ERR ${fmt(window.AVCalc.errOf(s) * 100, 1)}%</span></label>` : ''}`;
   }

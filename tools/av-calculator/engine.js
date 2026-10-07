@@ -496,7 +496,9 @@
       this.initEnemies();
       for (const u of this.chars()) this.fire(u, 'battleStart');
       for (const u of this.chars()) this.fire(u, 'afterBattleStart');
-      for (const u of this.chars()) this.checkUlt(u, 0);
+      // Energy after battle-start effects: a battle-start Ultimate needs it full.
+      for (const u of this.chars()) u.startEnergy = u.energy;
+      for (const u of this.chars()) if (!(u.maxEnergy > 0) || this.energyFull(u)) this.checkUlt(u, 0);
       // Holders whose target is missing fire straight away.
       for (const u of this.chars()) if (u.state.ultHeld && !this.targetOf(u)) this.releaseUlt(u);
 
