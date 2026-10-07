@@ -539,6 +539,60 @@
       hit(sim, u) { u.state.lc21024off = 2; },
       turnEnd(sim, u) { if (u.state.lc21024off && --u.state.lc21024off <= 0) u.state.lc21024off = 0; },
     },
+
+    21031: { desc: 'Buff dispel only (enemy buffs aren\'t simulated).' },
+    21037: {
+      desc: 'CRIT hits: Good Fortune, +CRIT DMG (4 stacks) until the end of her turn.',
+      afterDamage(sim, u, act) { if (isAtk(act) && sim.chance(u, 'lc21037', Math.min(1, st(sim, u).cr) / 0.8)) self(sim, u, 'goodFortune', { cd: L(u, 1) }, Infinity, { maxStacks: L(u, 2) }); },
+      turnEnd(sim, u) { sim.removeBuff(u, 'goodFortune'); },
+    },
+    21047: { desc: 'Dealing Break DMG: +SPD for 2 turns (once per turn).', weaknessBreak(sim, u, by) { if (by === u && u.state.lc21047 !== sim.turnId) { u.state.lc21047 = sim.turnId; sim.addBuff(u, { id: 'shadowed', pct: L(u, 1), turns: L(u, 2) }); } } },
+    21062: { desc: 'Skill and Follow-up +DMG.', battleStart(sim, u) { self(sim, u, 'lc21062', { dmg_Skill: L(u, 1), dmg_FUA: L(u, 1) }, Infinity); } },
+    22008: { desc: 'After a follow-up: +CRIT DMG for 2 turns (10 stacks).', followUpDone(sim, u) { self(sim, u, 'lc22008', { cd: L(u, 1) }, L(u, 2), { maxStacks: L(u, 3) }); } },
+    23001: {
+      desc: 'Per 10 SPD above 100 (6 stacks): Basic ATK / Skill +DMG, Ultimate +CRIT DMG.',
+      battleStart(sim, u) {
+        const k = (s, a) => Math.min(L(u, 4), Math.max(0, Math.floor((s.spd(a) - 100) / L(u, 1))));
+        self(sim, u, 'lc23001', { dmg_Basic: (s, a) => L(u, 2) * k(s, a), dmg_Skill: (s, a) => L(u, 2) * k(s, a), cd_Ult: (s, a) => L(u, 3) * k(s, a) }, Infinity);
+      },
+    },
+    23012: {
+      desc: 'A Basic ATK / Skill without a CRIT: +CRIT Rate for 1 turn (once per 3 turns).',
+      turnStart(sim, u) { if (u.state.lc23012cd > 0) u.state.lc23012cd -= 1; },
+      afterDamage(sim, u, act) {
+        if (!(act === 'Basic' || act === 'Skill') || u.state.lc23012cd > 0) return;
+        u.state.lc23012acc = (u.state.lc23012acc || 0) + (1 - Math.min(1, st(sim, u).cr));
+        if (u.state.lc23012acc >= 1) { u.state.lc23012acc -= 1; u.state.lc23012cd = L(u, 3); self(sim, u, 'lc23012', { cr: L(u, 1) }, L(u, 2)); }
+      },
+    },
+    23016: {
+      desc: 'Follow-up +DMG. Her follow-ups Tame the target (2 stacks): allies +CRIT DMG against it.',
+      battleStart(sim, u) { self(sim, u, 'lc23016', { dmg_FUA: L(u, 1) }, Infinity); },
+      followUpDone(sim, u) { team(sim, 'tame', { cd: L(u, 2) }, Infinity, { maxStacks: L(u, 3) }); },
+    },
+    23020: {
+      desc: '+CRIT DMG per debuff on the target (3). Ultimate attacks: Disputation for 2 turns, +DMG and follow-ups ignore DEF.',
+      battleStart(sim, u) { self(sim, u, 'lc23020', { cd: (s) => L(u, 1) * Math.min(L(u, 2), s.debuffCount()) }, Infinity); },
+      afterDamage(sim, u, act) { if (act === 'Ult') self(sim, u, 'disputation', { dmg: L(u, 3), defIgnore_FUA: L(u, 4) }, L(u, 5)); },
+    },
+    23027: { desc: 'Break DMG ignores DEF.', battleStart(sim, u) { self(sim, u, 'lc23027', { defIgnore_Break: L(u, 2) }, Infinity); } },
+    23031: {
+      desc: 'Follow-ups: Luminflux (2 stacks), her Ultimate ignores DEF per stack; one stack fades at the end of her turn.',
+      followUpDone(sim, u) { self(sim, u, 'luminflux', { defIgnore_Ult: L(u, 1) }, Infinity, { maxStacks: L(u, 2) }); },
+      turnEnd(sim, u) { const b = u.buffs.find((x) => x.id === 'luminflux'); if (b) { if (b.stacks > 1) b.stacks -= 1; else sim.removeBuff(u, 'luminflux'); } },
+    },
+    23046: {
+      desc: '+ATK if the team\'s SP limit is 6+. Each Skill: +ATK (4 stacks).',
+      afterBattleStart(sim, u) { if (sim.spMax >= L(u, 1)) self(sim, u, 'lc23046', { atkPct: L(u, 2) }, Infinity); },
+      action(sim, u, t) { if (t === 'Skill') self(sim, u, 'lc23046s', { atkPct: L(u, 3) }, Infinity, { maxStacks: L(u, 4) }); },
+    },
+    23056: {
+      desc: 'Battle start and every 4 follow-ups: Umbra Devourer for 3 turns: +ATK, enemies take +DMG.',
+      umbra(sim, u) { self(sim, u, 'umbra', { atkPct: L(u, 3) }, L(u, 2)); emod(sim, 'umbra', { vuln: L(u, 4) }, L(u, 2)); },
+      battleStart(sim, u) { u.state.lc23056 = 0; this.umbra(sim, u); },
+      followUpDone(sim, u) { if (++u.state.lc23056 >= L(u, 1)) { u.state.lc23056 = 0; this.umbra(sim, u); } },
+    },
+    24001: { desc: '+CRIT Rate vs enemies at ≤50% HP (half). On-kill ATK isn\'t simulated.', battleStart(sim, u) { self(sim, u, 'lc24001', { cr: L(u, 2) * HALF }, Infinity); } },
   };
 
   window.AVLightConeKits = lc;
