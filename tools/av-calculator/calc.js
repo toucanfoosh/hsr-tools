@@ -50,6 +50,8 @@
   // Energy Regeneration Rate: traces + relic set / light cone properties + ER rope.
   function errOf(slot) {
     const ch = CHARS[slot.charId];
+    // A character-screen value typed in the Stats panel wins.
+    if (slot.statTotals && slot.statTotals.err != null && slot.statTotals.err !== '') return +slot.statTotals.err;
     let err = (ch.combat.trace.err || 0);
     const add = (props) => (props || []).forEach((p) => { if (p.type === 'SPRatioBase') err += p.value; });
     const lc = LCS[slot.lcId];

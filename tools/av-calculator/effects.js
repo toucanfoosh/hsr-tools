@@ -583,7 +583,7 @@
     },
     1512: { // Robin • Summeretto
       advance: 'ult', allyTarget: { Ultimate: 2 },
-      desc: 'Ultimate: target advances 100% and becomes Special Guest (2 turns; can\'t advance others). Vibes: +1 per ally attack (+2 more from the Guest). Skill summons Bessie; at 12 Vibes the Songbirds (180% of her SPD) start Fever, Robin stops taking turns, and a 140 SPD countdown halves Vibes (min 12) until 0, then she advances 50%.',
+      desc: 'Ultimate: target advances 100% and becomes Special Guest (2 turns; can\'t advance others). Vibes: +1 per ally attack (+2 more from the Guest). Skill summons Bessie; at 12 Vibes the Songbirds (180% of her SPD) start Fever, Robin stops taking turns (she can still Ult), and a 140 SPD countdown halves Vibes (min 12) until 0, then she advances 50%. E6: 140 fixed Energy on first Fever and each countdown turn, and she can store 2 Ultimates in Fever.',
       battleStart(sim, u) { u.state.vibes = 0; },
       action(sim, u, t) {
         if (t === 'Skill') {
@@ -609,9 +609,15 @@
         u.state.vibes = Math.min(cap, u.state.vibes + n);
         if (u.state.bessie && !u.state.fever && u.state.vibes >= 12) this.startFever(sim, u);
       },
+      // Her Ultimate can still be used while Fever stops her turns.
+      ultWhileSuspended: true,
       startFever(sim, u) {
         u.state.fever = true;
         u.suspended = true;
+        if (E(u) >= 6) {
+          u.energyOverflow = u.maxEnergy; // E6: store up to 2 Ultimates during Fever
+          if (!u.state.feverOnce) { u.state.feverOnce = true; sim.gainEnergy(u, 140, { fixed: true }); }
+        }
         if (E(u) >= 4) u.state.vibes = Math.min(E(u) >= 2 ? 70 : 50, u.state.vibes + 12);
         const e4 = () => (E(u) >= 4 ? 0.2 + u.state.vibes * 0.005 : 0);
         u.state.birds = sim.spawn({
@@ -622,10 +628,8 @@
           key: `${u.key}:fever`, name: 'Fever', owner: u, icon: u.icon, fixedSpd: 140,
           onTurn(s, me) {
             u.state.vibes = Math.max(0, u.state.vibes - Math.max(12, u.state.vibes * 0.5));
-            // E6: each countdown turn refills 140 Energy, so the Ultimate is ready again.
-            if (E(u) >= 6 && u.state.vibes > 0) {
-              if (u.cfg.ultTiming === 'target') { u.state.nextUlt = u.actions; s.checkUlt(u, u.actions); } else s.ult(u);
-            }
+            // E6: each countdown turn regenerates a fixed 140 Energy (she can store 2 Ultimates).
+            if (E(u) >= 6 && u.state.vibes > 0) s.gainEnergy(u, 140, { fixed: true });
             if (u.state.vibes > 0) {
               // The countdown keeps ticking: re-arm it for its next turn.
               me.alive = true; me.dist = 10000;
@@ -636,6 +640,8 @@
             u.state.bessie = false;
             u.state.fever = false;
             u.suspended = false;
+            u.energyOverflow = 0;
+            u.energy = Math.min(u.energy, u.maxEnergy);
             s.advance(u, 0.5);
           },
         });

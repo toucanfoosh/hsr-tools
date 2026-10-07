@@ -644,7 +644,7 @@
     // held for the target with 'target' timing). Returns true if one fired.
     autoUlts() {
       for (const u of this.chars()) {
-        if (u.suspended || u.cfg.ultFirst < 0 || u.state.ultHeld) continue;
+        if ((u.suspended && !u.hooks.some((h) => h.ultWhileSuspended)) || u.cfg.ultFirst < 0 || u.state.ultHeld) continue;
         if (this.ultResource(u) === 'schedule') continue;
         if (this.fire(u, 'canUlt') === false || !this.ultIsReady(u)) continue;
         if (u.cfg.ultTiming === 'target' && this.targetOf(u)) {

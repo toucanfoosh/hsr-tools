@@ -55,7 +55,7 @@
     for (const [K, base, pct, flat] of [['ATK', 'atkBase', 'atkPct', 'atk'], ['HP', 'hpBase', 'hpPct', 'hp'], ['DEF', 'defBase', 'defPct', 'def']]) {
       if (tot[K] > 0) st[flat] += tot[K] - (st[base] * (1 + st[pct]) + st[flat]);
     }
-    for (const k of ['cr', 'cd', 'dmg', 'be', 'elation']) if (tot[k] != null && tot[k] !== '') st[k] = +tot[k];
+    for (const k of ['cr', 'cd', 'dmg', 'be', 'elation', 'err']) if (tot[k] != null && tot[k] !== '') st[k] = +tot[k];
     return st;
   }
 

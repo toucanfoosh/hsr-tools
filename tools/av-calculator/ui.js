@@ -316,17 +316,18 @@
   // Character-screen (pre-combat) totals. Typed values replace the calculated ones; blank fields
   // show the calculated value (from the account, or base + light cone + traces + sets).
   const STAT_FIELDS = [['ATK', 'ATK', 1], ['HP', 'HP', 1], ['DEF', 'DEF', 1], ['cr', 'CRIT Rate %', 100], ['cd', 'CRIT DMG %', 100],
-    ['dmg', 'DMG %', 100], ['be', 'Break %', 100], ['elation', 'Elation %', 100]];
+    ['dmg', 'DMG %', 100], ['be', 'Break %', 100], ['err', 'Energy Regen %', 100], ['elation', 'Elation %', 100]];
   function statsPanel(s, ch, i) {
     if (!window.AVDamage) return '';
     const calc = window.AVDamage.staticStats({ ...s, statTotals: null }, { CHARS, LCS, RELICS });
     const val = { ATK: calc.atkBase * (1 + calc.atkPct) + calc.atk, HP: calc.hpBase * (1 + calc.hpPct) + calc.hp, DEF: calc.defBase * (1 + calc.defPct) + calc.def,
-      cr: calc.cr, cd: calc.cd, dmg: calc.dmg, be: calc.be, elation: calc.elation };
+      cr: calc.cr, cd: calc.cd, dmg: calc.dmg, be: calc.be, elation: calc.elation,
+      err: window.AVCalc.errOf({ ...s, statTotals: null }) };
     const tot = s.statTotals || {};
     const shown = (k, mul) => Math.round(val[k] * mul * 10) / 10;
     return `<details class="more"><summary>Stats</summary>
       <div class="muted small note">Your character-screen stats. Blank fields use the calculated value${s.fromAccount && s.relicStats ? ' (from your account)' : ' (no relic stats)'}.</div>
-      <div class="row row-3 relic-grid">${STAT_FIELDS.filter(([k]) => k !== 'elation' || ch.path === 'Elation').map(([k, label, mul]) => `
+      <div class="row row-3 relic-grid">${STAT_FIELDS.filter(([k]) => (k !== 'elation' || ch.path === 'Elation') && (k !== 'err' || ch.combat.maxEnergy > 0)).map(([k, label, mul]) => `
         <label class="field"><span>${label}</span><input type="number" step="0.1" data-slot="${i}" data-total="${k}" data-mul="${mul}"
           value="${tot[k] != null ? Math.round(tot[k] * mul * 10) / 10 : ''}" placeholder="${shown(k, mul)}"></label>`).join('')}</div>
     </details>`;
@@ -507,7 +508,8 @@
       sl.statTotals = { ...(sl.statTotals || {}) };
       if (t.value === '') delete sl.statTotals[t.dataset.total];
       else sl.statTotals[t.dataset.total] = +t.value / +t.dataset.mul;
-      changed(false);
+      // ERR also shows next to the rope toggle, so redraw the card once the value is committed.
+      changed(t.dataset.total === 'err' && ev.type === 'change');
       return;
     }
     if (t.dataset.opt !== undefined) {
@@ -936,14 +938,17 @@
       const k = c.acts.indexOf(e);
       // An Ultimate belongs to the last action before it (it may be held for a while).
       const next = c.acts[k + 1];
-      const ult = c.ults.find((u) => u.n === e.n && u.av >= e.av - 1e-6 && (!next || u.av <= next.av + 1e-6));
-      const held = ult && ult.heldAV > 1e-6 ? ` title="Held ${fmt(ult.heldAV)} AV for the target; fired at ${fmt(ult.av)}"` : '';
+      // All Ultimates used after this action and before the next one (Evanescia can chain them).
+      const ultsHere = c.ults.filter((u) => u.n === e.n && u.av >= e.av - 1e-6 && (!next || u.av <= next.av + 1e-6));
+      const ult = ultsHere[0];
+      const held = ultsHere.length > 1 ? ` title="${ultsHere.length} Ultimates before the next turn, at AV ${ultsHere.map((x) => fmt(x.av)).join(', ')}"`
+        : ult && ult.heldAV > 1e-6 ? ` title="Held ${fmt(ult.heldAV)} AV for the target; fired at ${fmt(ult.av)}"` : '';
       const warn = ult && ult.heldActs ? ' ⚠' : '';
       const notes = crossMarks(e).map(markText);
       return `<td${notes.length ? ` title="${attr(esc(notes.join('\n')))}"` : ''}><span class="n">${ordinal(k + 1)}</span>${fmt(e.av)}${
         e.type === 'Extra' ? '<span class="ex">extra</span>' : ''}${
         notes.length ? `<span class="src" style="color:${elOf(crossMarks(e)[0].by)}">»</span>` : ''}${
-        ult ? `<span class="ult"${held}>★ ult${held ? ` @${fmt(ult.av)}` : ''}${warn}</span>` : ''}</td>`;
+        ult ? `<span class="ult"${held}>★ ult${ultsHere.length > 1 ? ` ×${ultsHere.length}` : ult && ult.heldAV > 1e-6 ? ` @${fmt(ult.av)}` : ''}${warn}</span>` : ''}</td>`;
     };
     let html = `<table class="av-table"><thead><tr>${cols.map((c) =>
       `<th><span class="th-char"><img src="${img.avatar(c.ch.id)}" alt="">${esc(c.ch.name)}</span></th>`).join('')}</tr></thead><tbody>`;
@@ -1124,7 +1129,9 @@
         continue;
       }
       if (e.kind === 'char' && e.type === 'Ultimate') {
-        parts.push(`<g data-tip="${attr(tip)}" transform="translate(${cx},${cy - 22})"><rect x="-6" y="-6" width="12" height="12" transform="rotate(45)" fill="#e7c27d" stroke="#0b0f1d" stroke-width="1.5"/></g>`);
+        // Several Ultimates close together: fan the diamonds out so each one is visible.
+        const k = `ult:${e.lane}@${Math.round(cx / 14)}`; const dup = stackAt.get(k) || 0; stackAt.set(k, dup + 1);
+        parts.push(`<g data-tip="${attr(tip)}" transform="translate(${cx + dup * 13},${cy - 22})"><rect x="-6" y="-6" width="12" height="12" transform="rotate(45)" fill="#e7c27d" stroke="#0b0f1d" stroke-width="1.5"/></g>`);
       } else if (e.kind === 'char') {
         const k = `${e.lane}@${fmt(e.av, 3)}`;
         const dup = stackAt.get(k) || 0;
