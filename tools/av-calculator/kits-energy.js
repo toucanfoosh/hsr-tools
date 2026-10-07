@@ -134,11 +134,7 @@
       ult(sim, u) { G(sim, u, 5); },
     },
     1110: { desc: 'Energy: standard.' }, // Lynx
-    1111: { // Luka: +3 per Fighting Will (Skill +1, Enhanced Basic uses 2).
-      desc: 'Energy: +3 per Fighting Will gained (+1 per Skill, +1 at battle start).',
-      battleStart(sim, u) { G(sim, u, 3); },
-      action(sim, u, t) { if (t === 'Skill') G(sim, u, 3); },
-    },
+    1111: { desc: 'Energy: see the audit kit (Fighting Will).' }, // Luka
     1112: { // Topaz: Numby turns; Windfall +10 per Numby attack; E2 +5.
       desc: 'Energy: +10 after each Numby attack during Windfall Bonanza (2 attacks, E6: 3); E2: +5 after every Numby attack.',
       numbyAttack(sim, u) {
@@ -148,10 +144,7 @@
       ult(sim, u) { u.state.bonanza = E(u) >= 6 ? 3 : 2; },
       allyAction(sim, u, actor) { if (actor === u.state.numby) this.numbyAttack(sim, u); },
     },
-    1201: { // Qingque: Skill free and restores 1 SP (trace); Enhanced Basic no SP. Simplified.
-      desc: 'SP: Skill costs 1 and restores 1 (net 0). E6: Enhanced Basic restores 1 SP.',
-      spCost(sim, u, t) { return t === 'Skill' ? 0 : t === 'Enhanced' ? (E(u) >= 6 ? -1 : 0) : undefined; },
-    },
+    1201: { desc: 'SP / Energy: see the audit kit (tiles).' }, // Qingque
     1202: { // Tingyun: +5 at turn start; Ult gives the Benediction target 50 (+10 E6); technique 50.
       desc: 'Energy: +5 at the start of each turn. Ultimate gives the target 50 Energy (E6: 60).',
       turnStart(sim, u) { G(sim, u, 5); },

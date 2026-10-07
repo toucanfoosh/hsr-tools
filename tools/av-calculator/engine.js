@@ -330,8 +330,9 @@
     }
     enemies() { return this.units.filter((u) => u.kind === 'enemy' && u.alive); }
     taunt(u) {
-      const k = this.fire(u, 'tauntMult');
-      return (u.cfg.char.combat.base.taunt || 100) * (k === undefined ? 1 : k);
+      const k = this.fireProduct(u, 'tauntMult');
+      const b = u.buffs.reduce((a, x) => a * (x.tauntMult || 1), 1);
+      return (u.cfg.char.combat.base.taunt || 100) * k * b;
     }
     pickVictim() {
       const pool = this.chars().filter((u) => !u.suspended);

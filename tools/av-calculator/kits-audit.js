@@ -379,6 +379,159 @@
       desc: 'E6: Basic ATK adds Physical DMG equal to 40% of her Max HP.',
       extraDamage(sim, u, act) { return E(u) >= 6 && act === 'Basic' ? std(sim, u, { hp: 0.4 }, 'Basic') : 0; },
     },
+
+    // ------------------------------------------------------------------ 1106 Pela
+    1106: {
+      desc: 'Bash: +20% DMG vs debuffed enemies. All allies +10% Effect Hit Rate. E4: Skill −12% Ice RES for 2 turns. E6: after attacking a debuffed enemy, +40% ATK Ice Additional DMG. (Buff dispels need enemy buffs, which aren\'t simulated.)',
+      battleStart(sim, u) { team(sim, 'secretStrategy', { ehr: 0.1 }, Infinity); },
+      action(sim, u, t) { if (E(u) >= 4 && t === 'Skill') emod(sim, 'pelaE4', { resEl: { Ice: 0.12 } }, 2); },
+      dmgScale(sim, u) { return sim.debuffCount() > 0 ? 1 + 0.2 / (1 + st(sim, u).dmg) : 1; },
+      extraDamage(sim, u, act) { return E(u) >= 6 && isAtk(act) && sim.debuffCount() > 0 ? std(sim, u, { atk: 0.4 }) * (act === 'Ult' ? n(sim) : 1) : 0; },
+    },
+    // ------------------------------------------------------------------ 1107 Clara
+    1107: {
+      desc: 'Enemies that hit her are marked; her Skill deals +120% ATK to each marked enemy and clears the marks (E1: keeps them). Counter 160% ATK; Revenge +30% Counter DMG; Enhanced Counter +160% multiplier and 50% splash to adjacent. Ultimate: much higher chance to be attacked for 2 turns. E2: +30% ATK for 2 turns after Ultimate. E6: 50% chance to counter when other allies are hit; +1 Enhanced Counter.',
+      battleStart(sim, u) { u.state.marked = new Set(); self(sim, u, 'revenge', { dmg_FUA: 0.3 }, Infinity); },
+      hit(sim, u, e) { if (e) u.state.marked.add(e); },
+      allyHit(sim, u, v, e) {
+        if (E(u) < 6 || u.state.enhancedLeft > 0) return;
+        if (sim.chance(u, 'e6', 0.5 / 0.8)) { if (e) u.state.marked.add(e); const ev = sim.record(u, 'FollowUp', { label: 'Counter', n: u.actions }); ev.dmg = sim.dealDamage(u, 'FollowUp', { label: 'Counter' }); G(sim, u, 5); sim.snap(ev, u); sim.fireAll('allyAttack', u, 'FollowUp'); }
+      },
+      ult(sim, u) { u.state.taunt = 2; u.state.enhancedLeft = E(u) >= 6 ? 3 : 2; if (E(u) >= 2) self(sim, u, 'claraE2', { atkPct: 0.3 }, 2); },
+      turnStart(sim, u) { if (u.state.taunt > 0) u.state.taunt -= 1; },
+      tauntMult(sim, u) { return u.state.taunt > 0 ? 5 : 1; },
+      action(sim, u, t) { if (t === 'Skill') { u.state.skillMarks = u.state.marked.size; if (E(u) < 1) u.state.marked.clear(); } },
+      dmgScale(sim, u, act, extra) {
+        if (act === 'Skill') { const k = n(sim); return (1.2 * k + 1.2 * Math.min(k, u.state.skillMarks || 0)) / (1.2 * k + 1.2); }
+        if (act === 'FollowUp' && extra && extra.label === 'Enhanced Counter') return (1.6 + 1.6) / 1.6 * (1 + 0.5 * Math.min(2, n(sim) - 1));
+        return 1;
+      },
+    },
+    // ------------------------------------------------------------------ 1108 Sampo
+    1108: {
+      desc: 'Wind Shear: each hit has a 65% base chance to add a stack (max 5, 4 turns), 52% ATK per stack per turn (E6: +15%). Ultimate: enemies take +30% DoT for 2 turns. E1: Skill +1 bounce. E4: Skill on 5 stacks detonates 8% of the Shear DMG.',
+      battleStart(sim, u) { u.state.stacks = 0; },
+      addShear(sim, u, hits) {
+        for (let i = 0; i < hits; i++) if (sim.chance(u, 'shear', 0.65)) u.state.stacks = Math.min(5, u.state.stacks + 1);
+        if (u.state.stacks > 0) sim.addDot({ id: `${u.key}:Windtorn Dagger`, src: u, mult: { atk: (0.52 + (E(u) >= 6 ? 0.15 : 0)) * u.state.stacks }, turns: 4 });
+      },
+      afterDamage(sim, u, act) {
+        if (act === 'Skill') {
+          if (E(u) >= 4 && u.state.stacks >= 5) { const d = (sim.dots || []).find((x) => x.id === `${u.key}:Windtorn Dagger`); if (d) sim.addDamage(u, 0.08 * AD().dotDamage(sim, d), 'DoT detonation'); }
+          this.addShear(sim, u, 5 + (E(u) >= 1 ? 1 : 0));
+        } else if (act === 'Ult') { emod(sim, 'surprisePresent', { vulnType: { DoT: 0.3 } }, 2); this.addShear(sim, u, n(sim)); }
+        else if (isAtk(act)) this.addShear(sim, u, 1);
+        if ((sim.dots || []).length === 0) u.state.stacks = 0;
+      },
+      dmgScale(sim, u, act) { return E(u) >= 1 && act === 'Skill' ? 6 / 5 : 1; },
+    },
+    // ------------------------------------------------------------------ 1109 Hook
+    1109: {
+      desc: 'Skill Burns (65% ATK, 2 turns; E2: 3). After Ultimate the next Skill is Enhanced (blast; E1 +20% DMG). Talent: attacking a Burned enemy adds 100% ATK (E4: also Burns adjacent). E6: +20% DMG vs Burned.',
+      burned(sim, u) { return (sim.dots || []).some((d) => d.src === u); },
+      ult(sim, u) { u.state.enhanced = true; },
+      actionType(sim, u) { return u.state.enhanced ? 'Enhanced' : undefined; },
+      spCost(sim, u, t) { return t === 'Enhanced' ? 1 : undefined; },
+      energyFor(sim, u, t) { return t === 'Enhanced' ? 30 : undefined; },
+      dotTurns(sim, u) { return E(u) >= 2 ? 3 : 2; },
+      action(sim, u, t) { if (t === 'Enhanced') u.state.enhanced = false; },
+      extraDamage(sim, u, act) { return isAtk(act) && act !== 'Ult' && this.burned(sim, u) ? std(sim, u, { atk: 1 }) : 0; },
+      dmgScale(sim, u, act) {
+        let k = 1;
+        if (E(u) >= 1 && act === 'Enhanced') k *= 1.2;
+        if (E(u) >= 6 && this.burned(sim, u)) k *= 1 + 0.2 / (1 + st(sim, u).dmg);
+        return k;
+      },
+    },
+    // ------------------------------------------------------------------ 1110 Lynx
+    1110: {
+      desc: 'Skill: Survival Response on the target (2 turns; Destruction / Preservation targets draw more attacks); +2 Energy when that target is hit. E4: the target gets +3% of Lynx\'s Max HP as ATK for 1 turn.',
+      allyTarget: { Skill: 1, Ultimate: 1 },
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        const tg = sim.targetOf(u); if (!tg) return;
+        u.state.sr = { who: tg, left: 2 };
+        if (E(u) >= 4) sim.addBuff(tg, { id: 'lynxE4', stats: { atk: 0.03 * st(sim, u).HP }, turns: 1 });
+        if (['Destruction', 'Preservation'].includes(tg.cfg.char.path)) sim.addBuff(tg, { id: 'srTaunt', turns: 2, tauntMult: 3 });
+      },
+      allyHit(sim, u, v) { if (u.state.sr && u.state.sr.who === v && u.state.sr.left > 0) G(sim, u, 2); },
+      allyTurnEnd(sim, u, a) { if (u.state.sr && u.state.sr.who === a) u.state.sr.left -= 1; },
+    },
+    // ------------------------------------------------------------------ 1111 Luka
+    1111: {
+      desc: 'Fighting Will: +1 per Basic or Skill (E2: Skill +1 more), +2 per Ultimate, start with 1, max 4; at 2+ the Basic is Sky-Shatter Fist (uses 2; 3 + 50% bonus hits of 20%, then 80%), whose uppercut detonates Bleed for 85% (E6: +8% per punch). +3 Energy per stack gained. Skill Bleeds (338% ATK cap per turn, 3 turns). Ultimate: target takes +20% DMG for 3 turns. E1: +15% DMG while the target Bleeds. E4: +5% ATK per stack gained (4).',
+      battleStart(sim, u) { u.state.fw = 1; },
+      gain(sim, u, k) {
+        for (let i = 0; i < k; i++) {
+          if (u.state.fw < 4) u.state.fw += 1;
+          G(sim, u, 3);
+          if (E(u) >= 4) sim.addBuff(u, { id: 'lukaE4', stats: { atkPct: 0.05 }, turns: Infinity, maxStacks: 4 });
+        }
+      },
+      actionType(sim, u, t) { return u.state.fw >= 2 ? 'Enhanced' : undefined; },
+      spCost(sim, u, t) { return t === 'Enhanced' ? -1 : undefined; },
+      energyFor(sim, u, t) { return t === 'Enhanced' ? 20 : undefined; },
+      bleeding(sim, u) { return (sim.dots || []).some((d) => d.id === `${u.key}:Lacerating Fist`); },
+      afterDamage(sim, u, act) {
+        if (act === 'Skill') { sim.addDot({ id: `${u.key}:Lacerating Fist`, src: u, mult: { atk: 3.38 }, turns: 3 }); this.gain(sim, u, 1 + (E(u) >= 2 ? 1 : 0)); }
+        if (act === 'Basic') this.gain(sim, u, 1);
+        if (act === 'Enhanced') {
+          u.state.fw -= 2;
+          const d = (sim.dots || []).find((x) => x.id === `${u.key}:Lacerating Fist`);
+          if (d) sim.addDamage(u, AD().dotDamage(sim, d) * (0.85 + (E(u) >= 6 ? 0.08 * 4.5 : 0)), 'DoT detonation');
+        }
+        if (E(u) >= 1 && this.bleeding(sim, u)) self(sim, u, 'lukaE1', { dmg: 0.15 }, 2);
+      },
+      ult(sim, u) { this.gain(sim, u, 2); emod(sim, 'lukaUlt', { vuln: 0.2 / n(sim) }, 3); },
+      dmgScale(sim, u, act) { return act === 'Enhanced' ? (4.5 * 0.2 + 0.8) / (3 * 0.2 + 0.8) : 1; },
+    },
+    // ------------------------------------------------------------------ 1112 Topaz & Numby
+    1112: {
+      desc: 'Financial Turmoil: +15% DMG vs Fire-weak enemies (assumed). Windfall Bonanza: Numby +25% CRIT DMG. E1: Follow-ups vs Proof of Debt make it a Debtor: +25% CRIT DMG to Follow-ups (2 stacks). E6: Numby +10% Fire RES PEN.',
+      battleStart(sim, u) { self(sim, u, 'turmoil', { dmg: 0.15 }, Infinity); },
+      allyAttack(sim, u, a, t) { if (E(u) >= 1 && t === 'FollowUp') team(sim, 'debtor', { cd_FUA: 0.25 }, Infinity, { maxStacks: 2 }); },
+      dmgScale(sim, u, act, extra, unit) {
+        if (!unit || unit.name !== 'Numby') return 1;
+        const s = st(sim, u), cr = Math.min(1, s.cr);
+        let k = u.state.bonanza > 0 ? (1 + cr * (s.cd + 0.25)) / (1 + cr * s.cd) : 1;
+        if (E(u) >= 6) k *= (1 - (0.2 - 0.1)) / 0.8;
+        return k;
+      },
+    },
+    // ------------------------------------------------------------------ 1201 Qingque
+    1201: {
+      desc: 'Tiles: on turns without Hidden Hand she uses Skill twice (1 SP each, +38% DMG per use this turn), then a Basic ATK; the next turn starts in Hidden Hand (+72% ATK, Basic becomes Cherry on Top!, no SP). Ultimate grants 4 matching tiles. Tile Battle: her first Skill each battle refunds 1 SP. Winning Hand: +10% SPD for 1 turn after Cherry on Top!. E1: Ult +10% DMG. E2: +1 Energy per tile drawn (1 per ally turn start, 2 per Skill). E4: 24% chance of a 100% follow-up after a Basic. E6: Cherry on Top! recovers 1 SP.',
+      battleStart(sim, u) { u.state.hidden = false; u.state.refund = true; if (E(u) >= 1) self(sim, u, 'qqE1', { dmg_Ult: 0.1 }, Infinity); },
+      allyTurnStart(sim, u) { if (E(u) >= 2) G(sim, u, 1); },
+      turnStart(sim, u) { if (E(u) >= 2) G(sim, u, 1); if (u.state.next) { u.state.hidden = true; u.state.next = false; self(sim, u, 'hiddenHand', { atkPct: 0.72 }, Infinity); } },
+      actionType(sim, u) { return u.state.hidden ? 'Enhanced' : 'Basic'; },
+      spCost(sim, u, t) { return t === 'Enhanced' ? (E(u) >= 6 ? -1 : 0) : undefined; },
+      energyFor(sim, u, t) { return t === 'Enhanced' ? 20 : undefined; },
+      action(sim, u, t) {
+        if (t === 'Basic') {
+          let k = 0;
+          while (k < 2 && sim.sp >= 1) {
+            k += 1; sim.useSP(1, u);
+            if (u.state.refund) { u.state.refund = false; sim.gainSP(1, u); }
+            sim.record(u, 'FollowUp', { label: `Skill ×${k} (A Scoop of Moon)`, n: u.actions });
+            self(sim, u, 'scoop', { dmg: 0.38 }, Infinity, { maxStacks: 4 });
+            if (E(u) >= 2) G(sim, u, 2);
+          }
+          u.state.next = true;
+          if (E(u) >= 4 && sim.chance(u, 'e4', 0.24 / 0.8)) u.state.e4 = true;
+        }
+        if (t === 'Enhanced') { u.state.hidden = false; sim.removeBuff(u, 'hiddenHand'); sim.addBuff(u, { id: 'winningHand', pct: 0.1, turns: 1 }); }
+      },
+      afterDamage(sim, u, act) {
+        if (u.state.e4 && (act === 'Basic' || act === 'Enhanced')) {
+          u.state.e4 = false;
+          const last = [...sim.events].reverse().find((e) => e.unit === u && !e.nonTurn);
+          if (last && last.dmg) { sim.record(u, 'FollowUp', { label: 'Self-Sufficer', n: u.actions }); sim.addDamage(u, last.dmg, 'Follow-up'); }
+        }
+      },
+      turnEnd(sim, u) { sim.removeBuff(u, 'scoop'); },
+      ult(sim, u) { u.state.next = true; },
+    },
   };
 
   window.AVAuditKits = kits;

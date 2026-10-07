@@ -72,6 +72,7 @@
     }
     return {
       ...s,
+      el: u.cfg && u.cfg.char ? u.cfg.char.element : null,
       ATK: s.atkBase * (1 + s.atkPct) + s.atk,
       HP: s.hpBase * (1 + s.hpPct) + s.hp,
       DEF: s.defBase * (1 + s.defPct) + s.def,
@@ -129,15 +130,18 @@
     return out;
   }
 
-  function enemyMods(sim) {
+  function enemyMods(sim, el) {
     const m = { vuln: 0, def: 0, res: 0 };
-    for (const d of sim.enemyMods || []) { m.vuln += d.vuln || 0; m.def += d.def || 0; m.res += d.res || 0; }
+    for (const d of sim.enemyMods || []) {
+      m.vuln += d.vuln || 0; m.def += d.def || 0; m.res += d.res || 0;
+      if (el && d.resEl) m.res += d.resEl[el] || 0; // e.g. Pela E4: Ice RES −12%
+    }
     return m;
   }
   // Ability types for type-specific buffs: dmg_Ult, cd_FUA, defIgnore_Skill, resPen_Basic...
   const pick = (st, key, type) => (st[key] || 0) + (type ? st[`${key}_${type}`] || 0 : 0);
   function common(sim, st, type) {
-    const em = enemyMods(sim);
+    const em = enemyMods(sim, st.el);
     st = { ...st, defIgnore: pick(st, 'defIgnore', type), resPen: pick(st, 'resPen', type), cd: pick(st, 'cd', type), cr: pick(st, 'cr', type) };
     em.vuln += type ? (sim.enemyMods || []).reduce((a, m) => a + ((m.vulnType && m.vulnType[type]) || 0), 0) : 0;
     const L = sim.enemyLevel || 95;
