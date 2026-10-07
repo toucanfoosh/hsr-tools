@@ -556,8 +556,71 @@
       allyUlt(sim, u, ulter, info) { if (ulter.kind === 'char' && info && info.spent) F(sim, u, 0.3 * info.spent); },
       action(sim, u, t) { if (t === 'Skill' && E(u) >= 1) F(sim, u, 40); },
     },
-    1510: { // Himeko • Nova: Assist Skills are not simulated yet.
-      desc: 'Energy: standard. Assist Skills (used by allies) are not simulated yet.',
+    1510: { // Himeko • Nova: Assist Skills for the whole team.
+      desc: 'Assist Skill: every ally starts with 1 use (E2: cap 2). Using it replaces that ally\'s action (no SP) and gives them 18 + 4 Energy; Trailblaze Companions also get an extra turn (E2: everyone), and trigger a Special Effect: Verdict (Trailblazer, Dan Hengs, Sunday): after 2 teammate Ultimates (E1: 1) Himeko launches a free Assist; Decimation (March 7th, Evernight, Welt, Himeko): every 9 enemies hit by allies (E1: 6) she launches one. Free Assists: 2 per battle (E1: 3), reset by her Ultimate. Her Skill restores all uses; Navigator\'s Semaphore (3 of her turns) restores 1 per ally turn (E2: 2). +5 Energy at her turn start if her uses are full.',
+      options: [{ key: 'assist', label: 'Allies use Assist Skill', type: 'select', def: 'companions',
+        choices: [['companions', 'Trailblaze Companions'], ['all', 'Everyone'], ['none', 'Nobody (pattern "A" only)']] }],
+      COMPANIONS: new Set(['8002', '8004', '8006', '8008', '8010', '1003', '1510', '1001', '1224', '1413', '1002', '1213', '1414', '1004', '1313']),
+      VERDICT: new Set(['8002', '8004', '8006', '8008', '8010', '1002', '1213', '1414', '1313']),
+      battleStart(sim, u) {
+        const kit = this, cap = E(u) >= 2 ? 2 : 1;
+        u.state.uses = new Map(sim.chars().map((a) => [a, 1]));
+        u.state.cap = cap; u.state.free = E(u) >= 1 ? 3 : 2; u.state.protocol = null; u.state.ults = 0; u.state.charge = 0;
+        const policy = O(u, 'assist', 'companions');
+        sim.assist = {
+          wants(s, a) {
+            if (a === u || policy === 'none' || a.state.assistExtra) return false;
+            if (policy === 'companions' && !kit.COMPANIONS.has(a.cfg.char.id)) return false;
+            return (u.state.uses.get(a) || 0) > 0;
+          },
+        };
+      },
+      turnStart(sim, u) {
+        if (u.state.semaphore > 0) u.state.semaphore -= 1;
+        if ((u.state.uses.get(u) || 0) >= u.state.cap) G(sim, u, 5);
+      },
+      allyTurnStart(sim, u, a) {
+        if (u.state.semaphore > 0) u.state.uses.set(a, Math.min(u.state.cap, (u.state.uses.get(a) || 0) + (E(u) >= 2 ? 2 : 1)));
+      },
+      action(sim, u, t) {
+        if (t === 'Skill') { sim.chars().forEach((a) => u.state.uses.set(a, u.state.cap)); u.state.semaphore = 3; }
+        if (t === 'Assist') sim.fire(u, 'assistUsed', u);
+      },
+      energyFor(sim, u, t) { return t === 'Assist' ? 18 : undefined; },
+      spCost(sim, u, t) { return t === 'Assist' ? 0 : undefined; },
+      allyAction(sim, u, a, t) {
+        if (t !== 'Assist' || a.kind !== 'char') return;
+        u.state.uses.set(a, Math.max(0, (u.state.uses.get(a) || 0) - 1));
+        F(sim, a, 4);
+        sim.fire(a, 'assistUsed', u);
+        const companion = this.COMPANIONS.has(a.cfg.char.id);
+        if (companion) u.state.protocol = this.VERDICT.has(a.cfg.char.id) ? 'verdict' : 'decimation';
+        if ((companion || E(u) >= 2) && !a.state.assistExtra) {
+          a.state.assistExtra = true;
+          sim.withCause({ by: u, label: 'Hark! The Express\'s Pulse Roars', hook: 'trace' }, () => sim.extraTurn(a));
+        }
+      },
+      allyTurnEnd(sim, u, a) { a.state.assistExtra = false; },
+      freeAssist(sim, u) {
+        if (!(u.state.free > 0)) return;
+        u.state.free -= 1;
+        const ev = sim.record(u, 'FollowUp', { label: 'Assist Skill (free)', n: u.actions });
+        ev.dmg = sim.dealDamage(u, 'Assist', { self: true, label: 'Assist Skill' });
+        G(sim, u, 18);
+        sim.snap(ev, u);
+        sim.fire(u, 'assistUsed', u);
+        sim.fireAll('allyAttack', u, 'FollowUp');
+      },
+      allyUlt(sim, u, ulter, info) {
+        if (u.state.protocol !== 'verdict' || ulter.kind !== 'char' || (info && info.activated)) return;
+        if (++u.state.ults >= (E(u) >= 1 ? 1 : 2)) { u.state.ults = 0; this.freeAssist(sim, u); }
+      },
+      allyAttack(sim, u, a, t) {
+        if (u.state.protocol !== 'decimation' || u.state.freeAssisting) return;
+        u.state.charge += sim.targetsHit(a, t === 'Ult' ? 'Ult' : t);
+        if (u.state.charge >= (E(u) >= 1 ? 6 : 9)) { u.state.charge = 0; u.state.freeAssisting = true; this.freeAssist(sim, u); u.state.freeAssisting = false; }
+      },
+      ult(sim, u) { u.state.free = E(u) >= 1 ? 3 : 2; },
     },
     1512: { // Robin • Summeretto: Ult gives target a fixed 20% of Max Energy.
       desc: 'Energy: Ultimate gives the target a fixed 20% of their Max Energy.',
@@ -693,21 +756,40 @@
     },
     1506: { // Silver Wolf LV.999: Hidden MMR (60) instead of Energy.
       autoUlt: 'Automatic at 60 Hidden MMR.',
-      desc: 'Ultimate resource: Hidden MMR (60). +1 per Punchline the team gains, +15 per Elation Skill (+20 with 20+ Punchline, +40 with 40+), +20 on entering Godmode. Skill: +5 Punchline. In Godmode, SP spent can open a Top Loot Box (first, then every 5th): Kaboom Eggsplosion +2 SP / Funky Munch Bean +3 Punchline. Leaving Godmode clears MMR (E1: keeps some).',
+      desc: 'Ultimate resource: Hidden MMR (60). +1 per Punchline the team gains, +15 per Elation Skill (+20 with 20+ Punchline, +40 with 40+), +20 on entering Godmode. Skill: +5 Punchline. In Godmode, SP spent can open a Top Loot Box (first, then every 5th): Kaboom Eggsplosion +2 SP / Funky Munch Bean +3 Punchline. Leaving Godmode clears MMR (E1: keeps 20%). E2: entering Godmode extends her buffs by 1 turn, and every 120 MMR gained in Godmode (counting what she had) gives an extra turn and 1 more Enhanced Basic ATK.',
       battleStart(sim, u) { u.state.mmr = 0; },
       ultReady(sim, u) { return u.state.mmr >= 60; },
-      punchline(sim, u, by, n) { u.state.mmr = Math.min(60 + 240, u.state.mmr + n); },
+      // All Hidden MMR gains go through here: cap 300, and in Godmode E2 counts every 120 gained
+      // (including the MMR held on entry) for an extra turn and 1 more Enhanced Basic ATK.
+      mmr(sim, u, n) {
+        u.state.mmr = Math.min(60 + 240, u.state.mmr + n);
+        if (u.state.god > 0 && E(u) >= 2) {
+          u.state.godGain = (u.state.godGain || 0) + n;
+          while (u.state.godGain >= 120 * ((u.state.e2Turns || 0) + 1)) {
+            u.state.e2Turns = (u.state.e2Turns || 0) + 1;
+            u.state.god += 1;
+            sim.extraTurn(u);
+          }
+        }
+      },
+      punchline(sim, u, by, n) { this.mmr(sim, u, n); },
       action(sim, u, t) {
         if (t === 'Skill') sim.addPunchline(5, u);
-        if (t === 'Enhanced' && u.state.god === 0) u.state.mmr = 0;
+        // Leaving Godmode clears Hidden MMR (E1: keeps 20%).
+        if (t === 'Enhanced' && u.state.god === 0) u.state.mmr = E(u) >= 1 ? u.state.mmr * 0.2 : 0;
       },
       // Secret Level Maxed: +20 on entering Godmode (MMR isn't spent; it clears when Godmode ends).
-      ult(sim, u) { u.state.mmr = Math.min(60 + 240, u.state.mmr + 20); u.state.box = 0; },
+      ult(sim, u) {
+        u.state.box = 0;
+        u.state.godGain = u.state.mmr; u.state.e2Turns = 0;
+        if (E(u) >= 2) { u.buffs.forEach((b) => { if (b.turns !== Infinity) b.turns += 1; }); u.cb.forEach((c) => { if (c.turns !== Infinity) c.turns += 1; }); }
+        this.mmr(sim, u, 20);
+      },
       elation(sim, u, info) {
         let n = u.state.god ? 0 : 15;
         if (info.punchline >= 20) n += 20;
         if (info.punchline >= 40) n += 20;
-        u.state.mmr += n;
+        this.mmr(sim, u, n);
         u.state.box = 0;
       },
       spUsed(sim, u, by, n) {

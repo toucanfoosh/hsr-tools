@@ -194,6 +194,9 @@
         <input type="number" min="1" max="120" data-g="enemyLevel" value="${state.enemyLevel || 95}"></label>
       <label class="field num"><span class="label-row">Enemy RES % ${infoIcon('The enemies\' RES to your damage types. 20% is the default for most enemies; 0% if they are weak to your damage type.')}</span>
         <input type="number" min="-100" max="100" data-g="enemyRes" value="${state.enemyRes == null ? 20 : state.enemyRes}"></label>
+      ${state.slots.some((x) => x && CHARS[x.charId] && CHARS[x.charId].combat.elationPid) ? `
+        <label class="check elation-attacks"><input type="checkbox" data-g="elationAttacks" ${state.elationAttacks !== false ? 'checked' : ''}>
+          Elation Skills count as attacks ${infoIcon('When on, damaging Elation Skills trigger "after an ally attacks" effects (Robin\'s Energy, Aventurine • Waveflair\'s Fervor, Feixiao\'s Flying Aureus...). The game text doesn\'t say clearly either way.')}</label>` : ''}
       ${state.mode === 'custom' ? `
         <label class="field num"><span>1st cycle AV</span><input type="number" min="1" data-g="customFirst" value="${state.customFirst}"></label>
         <label class="field num"><span>Cycle AV</span><input type="number" min="1" data-g="customLen" value="${state.customLen}"></label>` : ''}`;
@@ -366,27 +369,18 @@
 
   // Manual Ultimate schedule: first Ultimate after turn N (or at battle start), then every M of
   // this character's own turns, with a preview of the resulting turns.
+  // Manual Ultimate schedule: first Ultimate after turn N, then every M of this character's own
+  // turns, with a preview. (A battle-start Ultimate is "When ready" with full Energy.)
   function manualUlt(s, i, f) {
-    const se = startEnergy[i];
-    // Possible only if Energy is already full once the battle starts.
-    const startOk = !se || !(se.max > 0) || se.have >= se.max - 1e-6;
-    if (!startOk && +s.ultFirst === 0) s.ultFirst = Math.max(1, +s.ultFirstSaved || 3);
-    const atStart = +s.ultFirst === 0;
-    const first = atStart ? 0 : Math.max(1, +s.ultFirst || 1);
+    const first = Math.max(1, +s.ultFirst || 1);
     const every = Math.max(1, +s.ultEvery || 1);
-    const turns = [];
-    for (let k = atStart ? 1 : 0; turns.length < 4; k++) turns.push(first + k * every);
-    const preview = `${atStart ? 'Battle start, then after turns ' : 'Ultimate after turns '}${turns.join(', ')}…`;
+    const turns = [0, 1, 2, 3].map((k) => first + k * every);
     return `<div class="manual-ult">
       <div class="row row-2">
-        <label class="field"><span>First Ult turn</span>
-          <input type="number" min="1" ${f('ultFirst')} value="${atStart ? '' : first}" ${atStart ? 'disabled placeholder="Start"' : ''}></label>
-        <label class="field"><span>Repeat every</span>
-          <input type="number" min="1" ${f('ultEvery')} value="${every}"></label>
+        <label class="field"><span>First Ult turn</span><input type="number" min="1" ${f('ultFirst')} value="${first}"></label>
+        <label class="field"><span>Repeat every</span><input type="number" min="1" ${f('ultEvery')} value="${every}"></label>
       </div>
-      ${startOk ? `<label class="check"><input type="checkbox" ${f('ultStart')} ${atStart ? 'checked' : ''}> First Ult at battle start</label>`
-        : `<div class="hint muted small">No Ult at battle start: ${Math.round(se.have)}/${se.max} Energy after battle-start effects.</div>`}
-      <div class="hint ult-preview">${preview}</div>
+      <div class="hint ult-preview">Ultimate after turns ${turns.join(', ')}…</div>
     </div>`;
   }
 
@@ -430,6 +424,10 @@
     return `<div class="kit-opts">${kit.options.map((o) => {
       const v = opts[o.key] === undefined ? o.def : opts[o.key];
       const d = `data-slot="${i}" data-opt="${o.key}"`;
+      if (o.type === 'select') {
+        return `<label class="field"><span>${esc(o.label)}</span><select ${d}>${o.choices.map(([val, lab]) =>
+          `<option value="${val}"${String(v) === val ? ' selected' : ''}>${esc(lab)}</option>`).join('')}</select></label>`;
+      }
       return o.type === 'check'
         ? `<label class="check"><input type="checkbox" ${d} ${v ? 'checked' : ''}> ${esc(o.label)}</label>`
         : `<label class="field"><span>${esc(o.label)}</span><input type="number" ${d} min="${o.min}" max="${o.max}" step="${o.step}" value="${v}"></label>`;
@@ -492,12 +490,12 @@
     }
   }
 
-  const STRUCTURAL = new Set(['lcId', 'set1', 'set2', 'planar', 'ultTiming', 'target', 'spd', 'errRope', 'ultStart', 'ultFirst', 'ultEvery']);
+  const STRUCTURAL = new Set(['lcId', 'set1', 'set2', 'planar', 'ultTiming', 'target', 'spd', 'errRope', 'ultFirst', 'ultEvery']);
   function onInput(ev) {
     const t = ev.target;
     if (t.dataset.g) {
       const v = t.type === 'number' ? t.value : t.value;
-      state[t.dataset.g] = t.type === 'number' ? (v === '' ? '' : +v) : v;
+      state[t.dataset.g] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (v === '' ? '' : +v) : v;
       if (t.dataset.g === 'mode') renderModeBar();
       changed(false);
       return;
@@ -515,7 +513,7 @@
     if (t.dataset.opt !== undefined) {
       const s = state.slots[+t.dataset.slot];
       s.opts = s.opts || {};
-      s.opts[t.dataset.opt] = t.type === 'checkbox' ? t.checked : (t.value === '' ? '' : +t.value);
+      s.opts[t.dataset.opt] = t.type === 'checkbox' ? t.checked : t.tagName === 'SELECT' ? t.value : (t.value === '' ? '' : +t.value);
       changed(false);
       return;
     }
@@ -524,7 +522,6 @@
     const f = t.dataset.f;
     if (f === 'spd') { s.spd = t.value === '' ? '' : clampSpd(+t.value); s.spdAuto = t.value === ''; }
     else if (f === 'errRope') { s.errRope = t.checked; delete s.errRopeValue; }
-    else if (f === 'ultStart') { if (t.checked) { s.ultFirstSaved = s.ultFirst; s.ultFirst = 0; } else s.ultFirst = Math.max(1, +s.ultFirstSaved || 3); }
     else if (f === 'ultFirst') s.ultFirst = Math.max(1, +t.value || 1);
     else if (f === 'ultEvery') s.ultEvery = Math.max(1, +t.value || 1);
     else if (f === 'target') s.target = +t.value;
@@ -543,7 +540,7 @@
       const valid = s.target != null && state.slots[s.target] && +s.target !== i;
       if (!valid) { const j = state.slots.findIndex((x, k) => x && k !== i); s.target = j >= 0 ? j : null; }
     });
-    if (rerenderTeam) renderTeam(); else updateSpeeds();
+    if (rerenderTeam) { renderTeam(); renderModeBar(); } else updateSpeeds();
     renderResults();
     save();
     if (/[?&]t=/.test(location.hash)) history.replaceState(null, '', '#/av-calculator');

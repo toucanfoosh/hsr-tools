@@ -128,6 +128,7 @@
       enemyRes: state.enemyRes == null || state.enemyRes === '' ? 0.2 : +state.enemyRes / 100,
       enemyBroken: !!state.enemyBroken,
       enemyToughness: +state.enemyToughness || 160,
+      elationAttacks: state.elationAttacks !== false,
     });
 
     const units = [];
@@ -141,7 +142,7 @@
         stats0: window.AVDamage ? window.AVDamage.staticStats(slot, { CHARS, LCS, RELICS }) : null,
         cfg: {
           ...slot, slot: i, char: st.ch, lc: LCS[slot.lcId], lcS: slot.lcS || 1, eidolon: slot.eidolon || 0,
-          ultFirst: slot.ultMode === 'never' ? -1 : Math.max(0, +slot.ultFirst || 0),
+          ultFirst: slot.ultMode === 'never' ? -1 : Math.max(1, +slot.ultFirst || 1),
           ultEvery: Math.max(1, +slot.ultEvery || 1),
           target: slot.target == null ? null : +slot.target,
           opts: slot.opts || {},

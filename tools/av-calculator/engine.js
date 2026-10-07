@@ -26,8 +26,9 @@
   }
 
   class Sim {
-    constructor({ firstCycle, cycleLen, maxAV, enemies = 1, enemySpd = 120, enemyHits = 1, enemyLevel = 95, enemyRes = 0.2, enemyBroken = false, enemyToughness = 160 }) {
+    constructor({ elationAttacks = true, firstCycle, cycleLen, maxAV, enemies = 1, enemySpd = 120, enemyHits = 1, enemyLevel = 95, enemyRes = 0.2, enemyBroken = false, enemyToughness = 160 }) {
       this.enemyToughness = enemyToughness;
+      this.elationAttacks = elationAttacks;
       this.enemyLevel = enemyLevel;
       this.enemyRes = enemyRes;
       this.enemyBroken = enemyBroken;
@@ -80,10 +81,15 @@
     spawn(opts) {
       const u = this.addUnit({ kind: 'summon', ...opts });
       u.lane = opts.lane || u.key;
+      if (u.memo && u.owner) this.fire(u.owner, 'memoSummoned', u);
       return u;
     }
     spawnCountdown(opts) { return this.spawn({ kind: 'countdown', ...opts }); }
-    remove(u) { u.alive = false; }
+    remove(u) {
+      if (!u.alive) return;
+      u.alive = false;
+      if (u.kind === 'summon' && u.memo && u.owner) this.fire(u.owner, 'memoGone', u);
+    }
 
     spd(u) {
       if (u.spdFn) return Math.max(1, u.spdFn(this, u));
@@ -244,7 +250,7 @@
       if (u.kind !== 'char') return false;
       const kit = this.fire(u, 'isAttack', act);
       if (kit !== undefined) return kit;
-      if (act === 'Basic' || act === 'Enhanced' || act === 'Final' || act === 'FollowUp') return true;
+      if (act === 'Basic' || act === 'Enhanced' || act === 'Final' || act === 'FollowUp' || act === 'Assist') return true;
       const type = act === 'Skill' ? 'Skill' : act === 'Ult' ? 'Ult' : null;
       if (!type) return false;
       const a = (u.cfg.char.combat.abilities || []).find((x) => x.type === type && !x.memo);
@@ -446,6 +452,8 @@
       const ev = this.record(u, 'Elation', { punchline: pl, n: u.actions, ...extra });
       this.withCause({ by: u, label: u.name, hook: 'elation' }, () => this.fire(u, 'elation', { punchline: pl, fixed, ...extra }));
       ev.dmg = this.dealDamage(u, 'Elation', { punchline: pl, label: extra.label });
+      // Damaging Elation Skills count as attacks unless the team setting turns that off.
+      if (this.elationAttacks && ev.dmg > 0) this.fireAll('allyAttack', u, 'Elation');
       this.gainEnergy(u, this.abilityEnergy(u, 'Elation'));
       this.snap(ev, u);
       this.fireAll('allyElation', u, { punchline: pl });
@@ -565,6 +573,8 @@
       this.fire(u, 'turnStart');
       if (u.kind === 'char') this.fireAll('allyTurnStart', u);
       let type = u.kind === 'summon' ? 'Summon' : (this.fire(u, 'actionType') || this.patternAction(u));
+      // Himeko • Nova's Assist Skill replaces the action when the team setting says to use it.
+      if (u.kind === 'char' && this.assist && (type === 'Basic' || type === 'Skill') && this.assist.wants(this, u)) type = 'Assist';
       // A Skill the team can't pay for becomes a Basic ATK.
       if (u.kind === 'char' && type === 'Skill' && this.spCost(u, 'Skill') > this.sp + 1e-9) type = 'Basic';
       u.actions += 1;
@@ -587,6 +597,7 @@
       if (u.kind === 'char') this.tickCB(u);
       this.snap(ev, u);
       this.fire(u, 'turnEnd', type);
+      if (u.kind === 'char' && !u.extraTurns) this.fireAll('allyTurnEnd', u);
       this.current = null;
       this.inExtraTurn = prevExtra;
 
@@ -667,7 +678,7 @@
     patternAction(u) {
       const p = (u.cfg && u.cfg.pattern) || 'S';
       const ch = p[(u.actions) % p.length].toUpperCase();
-      return ch === 'B' ? 'Basic' : ch === 'U' ? 'Enhanced' : 'Skill';
+      return ch === 'B' ? 'Basic' : ch === 'U' ? 'Enhanced' : ch === 'A' && this.assist ? 'Assist' : 'Skill';
     }
 
     wantsUlt(u, n) {
@@ -699,7 +710,7 @@
   // "Pearl's Ultimate", "Dance! Dance! Dance! (Tingyun's Ultimate)", "Sprightly Vonwacq (2pc) at battle start"...
   const PHRASE = {
     ult: 'Ultimate', battleStart: 'battle start', afterBattleStart: 'battle start',
-    allyAction: 'talent', allyUlt: 'talent', turnStart: 'turn start', turnEnd: 'turn end', turn: 'turn',
+    allyAction: 'talent', allyUlt: 'talent', trace: 'trace', turnStart: 'turn start', turnEnd: 'turn end', turn: 'turn',
   };
   const ACT = { Basic: 'Basic ATK', Skill: 'Skill', Enhanced: 'enhanced attack', Summon: 'turn', Extra: 'extra turn', Final: 'final hit' };
   function causeText(c) {

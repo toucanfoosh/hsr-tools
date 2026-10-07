@@ -91,6 +91,12 @@
       case 'Enhanced': return of('Basic')[1] || of('Skill')[1] || of('Skill')[0] || null;
       case 'Ult': return of('Ult')[0] || null;
       case 'FollowUp': return of('Talent')[0] || null;
+      case 'Assist': {
+        // Himeko • Nova's Assist: the first two hits are an ally's version, the last two hers.
+        const a = abs.find((x) => x.type === 'Assist' && x.hits && x.hits.length);
+        if (!a) return null;
+        return { ...a, hits: extra && extra.self ? a.hits.slice(2) : a.hits.slice(0, 2) };
+      }
       case 'Elation': {
         const el = of('Elation');
         if (extra && extra.label && el.length > 1) return el.find((a) => a.name.startsWith(extra.label.replace('!', ''))) || el[0];
