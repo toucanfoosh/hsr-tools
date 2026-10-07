@@ -234,32 +234,12 @@
         }
       },
     },
-    1221: { // Yunli: counter when hit (+10 +15); Ult: Parry, then Intuit counter.
-      desc: 'Energy: Counter when hit (10 + 15). Ultimate: Parry until the next enemy action, which triggers "Intuit: Cull".',
-      hit(sim, u) { u.state.parry = false; followUp(sim, u, 25, 'Counter'); },
-      ult(sim, u) { u.state.parry = true; },
-      enemyTurnStart(sim, u) {
-        // If nothing hits her while Parry is up, she casts "Intuit: Slash" anyway.
-        if (u.state.parry) { u.state.parry = false; followUp(sim, u, 0, 'Intuit'); }
-      },
-    },
+    1221: { desc: 'Energy: see the audit kit.' }, // Yunli
     1222: { // Lingsha: Basic +10.
       desc: 'Energy: Basic ATK +10 more.',
       action(sim, u, t) { if (t === 'Basic') G(sim, u, 10); },
     },
-    1223: { // Moze: Departed; Charge-based follow-ups; SP from Nightfeather.
-      desc: 'Energy: follow-up (+10) for every 3 Charge spent when allies hit Prey (Skill: 9 Charge); Nightfeather +1 SP per follow-up (once per turn). E1: +20 at battle start, +2 per Additional DMG.',
-      battleStart(sim, u) { if (E(u) >= 1) G(sim, u, 20); },
-      action(sim, u, t) { if (t === 'Skill') { u.state.charge = 9; u.state.spent = 0; } },
-      ult(sim, u) { followUp(sim, u, 10); this.nightfeather(sim, u); },
-      allyAttack(sim, u, actor, t) {
-        if (actor.kind !== 'char' || !(u.state.charge > 0)) return;
-        u.state.charge -= 1;
-        if (E(u) >= 1) G(sim, u, 2);
-        if (++u.state.spent >= 3) { u.state.spent = 0; followUp(sim, u, 10); this.nightfeather(sim, u); }
-      },
-      nightfeather(sim, u) { if (!u.state.nfTurn || u.state.nfTurn !== u.actions) { u.state.nfTurn = u.actions; sim.gainSP(1, u); } },
-    },
+    1223: { desc: 'Energy: see the audit kit.' }, // Moze
     1224: { // March 7th (Hunt): Enhanced Basic 30 Energy, no SP; E4 +5 at turn start; E2 follow-up.
       desc: 'Energy: Enhanced Basic 30 (no SP). E2: follow-up after Shifu\'s Basic/Skill (once per turn). E4: +5 at turn start.',
       spCost(sim, u, t) { return t === 'Enhanced' ? 0 : undefined; },

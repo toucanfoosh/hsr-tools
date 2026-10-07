@@ -921,6 +921,214 @@
       },
       dotScale(sim, u, d) { return E(u) >= 2 && d && d.id.endsWith(':Quartet Finesse, Octave Finery') ? (1.8 + 3) / 1.8 : 1; },
     },
+
+    // ------------------------------------------------------------------ 1220 Feixiao
+    1220: {
+      desc: 'Skill: launches 1 extra Talent follow-up. E1: each Boltsunder Blitz / Waraxe Skyward raises the rest of the Ultimate by 10% (5 stacks). E2: +1 Flying Aureus per ally follow-up (6 per turn). E4: Talent follow-ups double Toughness DMG and give +8% SPD for 2 turns. E6: Ultimate +20% RES PEN; Talent follow-ups count as Ultimate DMG with +140% multiplier.',
+      battleStart(sim, u) { u.state.e2n = 0; if (E(u) >= 6) self(sim, u, 'feixiaoE6', { resPen_Ult: 0.2 }, Infinity); },
+      turnStart(sim, u) { u.state.e2n = 0; },
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        window.AVEnergyHelpers.followUp(sim, u, 0, 'Follow-up');
+        window.AVEnergyKits[1220].count(sim, u);
+      },
+      allyAttack(sim, u, a, t) {
+        if (E(u) < 2 || t !== 'FollowUp' || a.kind !== 'char' || u.state.e2n >= 6) return;
+        u.state.e2n += 1;
+        u.state.aureus = Math.min(12, u.state.aureus + 1);
+      },
+      followUpDone(sim, u) {
+        if (E(u) < 4) return;
+        sim.addBuff(u, { id: 'feixiaoE4', pct: 0.08, turns: 2 });
+        AD().applyToughness(sim, u, u.cfg.char.combat.abilities.find((a) => a.type === 'Talent'), u);
+      },
+      dmgScale(sim, u, act) {
+        if (act === 'Ult' && E(u) >= 1) return (0.9 * (6 + 0.1 * (0 + 1 + 2 + 3 + 4 + 5)) + 1.6 * 1.5) / (0.9 * 6 + 1.6);
+        if (act === 'FollowUp' && E(u) >= 6) {
+          const s = st(sim, u), p = window.AVEffects.P(u, 'Talent', 0);
+          return (p + 1.4) / p * (1 + s.dmg + (s.dmg_FUA || 0) + (s.dmg_Ult || 0)) / (1 + s.dmg + (s.dmg_FUA || 0));
+        }
+        return 1;
+      },
+    },
+    // ------------------------------------------------------------------ 1221 Yunli
+    1221: {
+      desc: 'Counter when hit (120% ATK + 60% adjacent; True Sunder: +30% ATK for 1 turn on each Counter). Ultimate: Parry and Taunt until the next ally or enemy turn ends; being hit launches "Intuit: Cull" (220% + 110% adjacent + 6 × 72% random; E1: 9 and +20% DMG), otherwise "Intuit: Slash" (220% + 110%; Fiery Wheel: the next Slash becomes Cull). Intuit is Ultimate DMG with +100% CRIT DMG. E2: Counters ignore 20% DEF. E6: any enemy action triggers Cull; Intuit +15% CRIT Rate and +20% Physical RES PEN.',
+      battleStart(sim, u) { if (E(u) >= 2) self(sim, u, 'yunliE2', { defIgnore_FUA: 0.2 }, Infinity); },
+      counter(sim, u, label, energy) {
+        self(sim, u, 'trueSunder', { atkPct: 0.3 }, 1);
+        window.AVEnergyHelpers.followUp(sim, u, energy, label);
+      },
+      intuit(sim, u, cull) {
+        u.state.parry = false;
+        if (!cull && u.state.wheel) cull = true;
+        u.state.wheel = !cull;
+        self(sim, u, 'intuit', { cd: 1, ...(E(u) >= 2 ? { defIgnore: 0.2 } : {}), ...(E(u) >= 6 ? { cr: 0.15, resPen: 0.2 } : {}), ...(E(u) >= 1 ? { dmg: 0.2 } : {}) }, Infinity);
+        this.counter(sim, u, cull ? 'Intuit: Cull' : 'Intuit: Slash', cull ? 25 : 0);
+        sim.removeBuff(u, 'intuit');
+      },
+      hit(sim, u) { if (u.state.parry) this.intuit(sim, u, true); else this.counter(sim, u, 'Counter', 25); },
+      ult(sim, u) { u.state.parry = true; },
+      tauntMult(sim, u) { return u.state.parry ? 1000 : 1; },
+      enemyTurnStart(sim, u) { if (u.state.parry && E(u) >= 6) this.intuit(sim, u, true); },
+      turnEnd(sim, u) { if (u.state.parry) this.intuit(sim, u, false); },
+      allyTurnEnd(sim, u) { if (u.state.parry) this.intuit(sim, u, false); },
+      isIntuit: (extra) => extra && /^Intuit/.test(extra.label || ''),
+      dmgScale(sim, u, act, extra) { return this.isIntuit(extra) ? 0 : 1; },
+      extraDamage(sim, u, act, extra) {
+        if (!this.isIntuit(extra)) return 0;
+        const adj = Math.min(2, n(sim) - 1);
+        const cull = extra.label === 'Intuit: Cull' ? 0.72 * (E(u) >= 1 ? 9 : 6) : 0;
+        return std(sim, u, { atk: 2.2 + 1.1 * adj + cull }, 'Ult');
+      },
+    },
+    // ------------------------------------------------------------------ 1222 Lingsha
+    1222: {
+      desc: 'Vermilion Waft: +25% of Break Effect as ATK (max 50%). Ultimate: Befog, enemies take +25% Break DMG for 2 turns. Ember\'s Echo: when an ally is hit while Fuyuan is out and someone is at ≤60% HP (assumed half the time), Fuyuan attacks without using an action (every 2 of her turns). E1: +50% Weakness Break Efficiency; Broken enemies −20% DEF. E2: Ultimate +40% Break Effect to all allies for 3 turns. E6: Fuyuan out: enemies −20% All-Type RES, and each Fuyuan attack adds 4 × 50% ATK hits.',
+      battleStart(sim, u) {
+        u.state.ember = 0; u.state.emberCd = 0;
+        self(sim, u, 'vermilion', { atkPct: Math.min(0.5, 0.25 * ((u.stats0 && u.stats0.be) || 0)) }, Infinity);
+        if (E(u) >= 1) self(sim, u, 'lingshaE1', { wbe: 0.5 }, Infinity);
+      },
+      fuyuan(sim, u) { return sim.units.find((x) => x.owner === u && x.name === 'Fuyuan' && x.alive); },
+      turnStart(sim, u) { if (u.state.emberCd > 0) u.state.emberCd -= 1; },
+      ult(sim, u) {
+        emod(sim, 'befog', { vulnType: { Break: 0.25 } }, 2);
+        if (E(u) >= 2) team(sim, 'lingshaE2', { be: 0.4 }, 3);
+      },
+      weaknessBreak(sim, u) { if (E(u) >= 1) emod(sim, 'lingshaE1', { def: 0.2 * sim.brokenShare() }, 1); },
+      ember(sim, u) {
+        const f = this.fuyuan(sim, u);
+        if (!f || u.state.emberCd > 0) return;
+        u.state.ember += 0.5;
+        if (u.state.ember < 1) return;
+        u.state.ember -= 1; u.state.emberCd = 2;
+        const ev = sim.record(f, 'FollowUp', { label: 'Ember\'s Echo' });
+        ev.dmg = sim.dealDamage(f, 'Summon');
+        sim.fireAll('allyAttack', f, 'FollowUp');
+      },
+      hit(sim, u) { this.ember(sim, u); },
+      allyHit(sim, u) { this.ember(sim, u); },
+      allyAction(sim, u, a) { if (E(u) >= 6 && a.name === 'Fuyuan' && a.owner === u) emod(sim, 'lingshaE6', { res: 0.2 }, 2); },
+      action(sim, u, t) { if (E(u) >= 6 && t === 'Skill') emod(sim, 'lingshaE6', { res: 0.2 }, 2); },
+      extraDamage(sim, u, act, extra, unit) { return E(u) >= 6 && unit && unit.name === 'Fuyuan' ? std(sim, u, { atk: 4 * 0.5 }, 'FUA') : 0; },
+    },
+    // ------------------------------------------------------------------ 1223 Moze
+    1223: {
+      desc: 'Skill marks Prey with 9 Charge and Moze Departs (no turns; he can still use his Ultimate). Each ally attack on Prey: 30% ATK Additional DMG and −1 Charge (E1: +2 Energy); every 3 Charge spent: a 160% follow-up (+10 Energy; Nightfeather +1 SP, once per turn). At 0 Charge he returns with a 20% advance. Ultimate is a follow-up that also launches the Talent follow-up. Vengewise: Prey takes +25% follow-up DMG. E1: +20 Energy at battle start. E2: allies +40% CRIT DMG vs Prey. E4: Ultimate +30% DMG for 2 turns. E6: follow-up multiplier +25%.',
+      ultWhileSuspended: true,
+      battleStart(sim, u) { u.state.charge = 0; if (E(u) >= 1) G(sim, u, 20); },
+      action(sim, u, t) { if (t === 'Skill') { u.state.charge = 9; u.state.spent = 0; } },
+      afterDamage(sim, u, act) {
+        if (act === 'Ult') this.fua(sim, u);
+        if (act !== 'Skill') return;
+        u.suspended = true;
+        emod(sim, 'prey', { vulnType: { FUA: 0.25 } }, Infinity);
+        if (E(u) >= 2) team(sim, 'mozeE2', { cd: 0.4 }, Infinity);
+      },
+      endPrey(sim, u) {
+        u.suspended = false;
+        sim.enemyMods = (sim.enemyMods || []).filter((m) => m.id !== 'prey');
+        sim.units.forEach((x) => sim.removeBuff(x, 'mozeE2'));
+        sim.advance(u, 0.2);
+      },
+      fua(sim, u) {
+        window.AVEnergyHelpers.followUp(sim, u, 10);
+        if (u.state.nfTurn !== u.actions) { u.state.nfTurn = u.actions; sim.gainSP(1, u); }
+      },
+      allyAttack(sim, u, a) {
+        if (a.kind !== 'char' || !(u.state.charge > 0)) return;
+        sim.addDamage(u, std(sim, u, { atk: window.AVEffects.P(u, 'Talent', 0) }), 'Additional');
+        if (E(u) >= 1) G(sim, u, 2);
+        u.state.charge -= 1;
+        if (++u.state.spent >= 3) { u.state.spent = 0; this.fua(sim, u); }
+        if (u.state.charge <= 0) this.endPrey(sim, u);
+      },
+      ult(sim, u) { if (E(u) >= 4) self(sim, u, 'mozeE4', { dmg: 0.3 }, 2); },
+      dmgScale(sim, u, act) {
+        if (act !== 'FollowUp') return 1;
+        const p0 = window.AVEffects.P(u, 'Talent', 0), p2 = window.AVEffects.P(u, 'Talent', 2);
+        return (p2 + (E(u) >= 6 ? 0.25 : 0)) / (p0 + p2);
+      },
+    },
+    // ------------------------------------------------------------------ 1224 March 7th (The Hunt)
+    1224: {
+      desc: 'Charge: +1 per Basic ATK and per Shifu attack or Ultimate (max 10); at 7 she acts immediately with +80% DMG and an Enhanced Basic ATK (uses 7): 3 hits of 80% plus up to 3 more at a 60% fixed chance each (Ultimate: +2 hits and +20% chance). Her first turn uses Skill to name Shifu. Shifu path effect per Basic ATK hit: DPS paths add 20% ATK Additional DMG; Harmony / Nihility / Preservation / Abundance double the Toughness DMG. Tide Tamer: after an Enhanced Basic ATK, Shifu +60% CRIT DMG and +36% Break Effect for 2 turns. E2: Shifu\'s Basic / Skill triggers a 60% follow-up (+1 Charge). E6: after Ultimate, the next Enhanced Basic ATK +50% CRIT DMG.',
+      DPS: new Set(['Erudition', 'Destruction', 'The Hunt', 'Remembrance', 'Elation']),
+      battleStart(sim, u) { u.state.charge = 0; u.state.boost = false; },
+      shifu(sim, u) { return u.state.named ? sim.targetOf(u) : null; },
+      actionType(sim, u) {
+        if (u.state.charge >= 7) return 'Enhanced';
+        if (!u.state.named && sim.targetOf(u) && sim.sp >= 1) return 'Skill';
+        return 'Basic';
+      },
+      gain(sim, u, k = 1) {
+        u.state.charge = Math.min(10, u.state.charge + k);
+        if (u.state.charge >= 7 && !u.state.pending && sim.current !== u) { u.state.pending = true; sim.actNow(u); }
+      },
+      hits(sim, u) { const b = u.state.boost, p = 0.6 + (b ? 0.2 : 0); return 3 + (b ? 2 : 0) + p + p * p + p * p * p; },
+      pathEffect(sim, u, k) {
+        const sf = this.shifu(sim, u);
+        if (!sf) return 0;
+        if (this.DPS.has(sf.cfg.char.path)) return std(sim, u, { atk: 0.2 * k });
+        const ab = u.cfg.char.combat.abilities.find((a) => a.type === 'Basic');
+        for (let i = 0; i < Math.round(k); i++) AD().applyToughness(sim, u, ab, u);
+        return 0;
+      },
+      action(sim, u, t) {
+        if (t === 'Skill') u.state.named = true;
+        if (t === 'Basic') this.gain(sim, u);
+        if (t === 'Enhanced') { u.state.charge -= 7; u.state.pending = false; self(sim, u, 'ascended', { dmg: 0.8, ...(E(u) >= 6 && u.state.boost ? { cd: 0.5 } : {}) }, Infinity); }
+      },
+      afterDamage(sim, u, act) {
+        if (act === 'Enhanced') {
+          sim.removeBuff(u, 'ascended');
+          u.state.boost = false;
+          const sf = this.shifu(sim, u);
+          if (sf) sim.addBuff(sf, { id: 'tideTamer', stats: { cd: 0.6, be: 0.36 }, turns: 2 });
+        }
+      },
+      ult(sim, u) { u.state.boost = true; },
+      allyAttack(sim, u, a, t) { if (a === this.shifu(sim, u) && t !== 'Ult') this.gain(sim, u); },
+      allyUlt(sim, u, a) { if (a === this.shifu(sim, u)) this.gain(sim, u); },
+      followUpDone(sim, u) { this.gain(sim, u); },
+      dmgScale(sim, u, act) { return act === 'Enhanced' ? this.hits(sim, u) / 3 : 1; },
+      extraDamage(sim, u, act) {
+        if (act === 'Basic') return this.pathEffect(sim, u, 1);
+        if (act === 'Enhanced') return this.pathEffect(sim, u, this.hits(sim, u));
+        if (act === 'FollowUp') return std(sim, u, { atk: 0.6 }, 'FUA') + this.pathEffect(sim, u, 1);
+        return 0;
+      },
+    },
+    // ------------------------------------------------------------------ 1225 Fugue
+    1225: {
+      desc: 'Skill: Foxian Prayer on the target (+30% Break Effect; E1: +50% Weakness Break Efficiency; E4: +20% Break DMG) and Torrid Scorch for 3 of her turns (Basic ATK becomes the blast Fiery Caress); each Prayer-holder attack lowers the enemy\'s DEF by 18% for 2 turns. Cloudflame Luster: Broken enemies get 40% more Toughness that, once depleted, deals Break DMG again. Verdantia: Weakness Break delays the enemy 15%. Sylvan Enigma: +30% Break Effect; her first Skill refunds 1 SP. Phecda: each Break gives teammates +6% Break Effect (+12% more at her 220% BE) for 2 turns (2 stacks). E2: +3 Energy per Break. E6: +50% Weakness Break Efficiency; Prayer on all allies during Torrid Scorch.',
+      battleStart(sim, u) {
+        u.state.scorch = 0; u.state.firstSkill = true;
+        sim.lusterPct = 0.4;
+        self(sim, u, 'sylvan', { be: 0.3 }, Infinity);
+        if (E(u) >= 6) self(sim, u, 'fugueE6', { wbe: 0.5 }, Infinity);
+      },
+      turnStart(sim, u) { if (u.state.scorch > 0) u.state.scorch -= 1; },
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        u.state.scorch = 3;
+        if (u.state.firstSkill) { u.state.firstSkill = false; sim.gainSP(1, u); }
+        const tg = sim.targetOf(u);
+        sim.units.forEach((x) => sim.removeBuff(x, 'foxianPrayer'));
+        const holders = E(u) >= 6 ? sim.chars() : tg ? [tg] : [];
+        for (const a of holders) sim.addBuff(a, { id: 'foxianPrayer', stats: { be: 0.3, ...(E(u) >= 1 ? { wbe: 0.5 } : {}), ...(E(u) >= 4 ? { breakDmg: 0.2 } : {}) }, turns: 3, tick: 'owner', owner: u });
+      },
+      dmgAbility(sim, u, act) { return act === 'Basic' && u.state.scorch > 0 ? 'Fiery Caress' : undefined; },
+      allyAttack(sim, u, a) { if (sim.hasBuff(a, 'foxianPrayer')) emod(sim, 'foxianDef', { def: 0.18 }, 2); },
+      afterDamage(sim, u, act) { if (isAtk(act) && sim.hasBuff(u, 'foxianPrayer')) emod(sim, 'foxianDef', { def: 0.18 }, 2); },
+      weaknessBreak(sim, u, by, e) {
+        if (e) sim.delay(e, 0.15);
+        const k = 0.06 + (st(sim, u).be >= 2.2 ? 0.12 : 0);
+        sim.allies(u).forEach((a) => sim.addBuff(a, { id: 'phecda', stats: { be: k }, turns: 2, maxStacks: 2 }));
+        if (E(u) >= 2) G(sim, u, 3);
+      },
+    },
   };
 
   window.AVAuditKits = kits;

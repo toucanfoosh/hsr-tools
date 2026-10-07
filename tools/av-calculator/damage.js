@@ -250,11 +250,8 @@
         team(sim, 'backupDancer', { be: 0.3, superBreak: 1 + bonus }, 3, { tick: 'owner', owner: u });
       },
     },
-    1225: { // Fugue: while on field, allies' hits on broken enemies → 100% Super Break; Skill target +30% BE.
+    1225: { // Fugue: while on field, allies' hits on broken enemies → 100% Super Break (rest: audit kit).
       battleStart(sim, u) { team(sim, 'fugueSB', { superBreak: 1 }, Infinity); },
-      action(sim, u, t) {
-        if (t === 'Skill') { sim.addEnemyMod({ id: 'foxian', def: 0.18, turns: 3 }); const tg = sim.targetOf(u); if (tg) sim.addBuff(tg, { id: 'foxianBE', stats: { be: 0.3 }, turns: 3 }); }
-      },
     },
     1310: { // Firefly: Combustion: +50% WBE, +25% BE, Super Break 100% (BE ≥150%) / 150% (BE ≥300%), +20% Break DMG.
       ult(sim, u) {
@@ -447,7 +444,7 @@
     const el = BREAK_ELEMENT[u.cfg.char.element] || 1;
     const tough = sim.enemyToughness || 160;
     return BREAK_LEVEL_MULT * el * (0.5 + tough / 40) * (1 + st.be) * (1 + (st.breakDmg || 0))
-      * common(sim, { ...st, cr: 0 }) / (0.9 + 0.1 * (sim.brokenShare ? sim.brokenShare() : 0));
+      * common(sim, { ...st, cr: 0 }, 'Break') / (0.9 + 0.1 * (sim.brokenShare ? sim.brokenShare() : 0));
   }
   // Toughness: reduce every enemy by its share of the hit (main target: one + all; adjacent:
   // spread + all; others: all). Returns the reduction per broken enemy for Super Break.
@@ -462,14 +459,19 @@
     es.forEach((e, i) => {
       const raw = ((i === 0 ? t.one || 0 : i <= 2 ? t.spread || 0 : 0) + (t.all || 0)) / 3 * wbe;
       if (!raw) return;
-      if (e.broken) { sbTough += raw; sbHits += 1; return; }
+      if (e.broken) {
+        sbTough += raw; sbHits += 1;
+        // Fugue's Cloudflame Luster: extra Toughness on Broken enemies that breaks again.
+        if (e.luster > 0 && (e.luster -= raw) <= 1e-9) { e.luster = 0; sim.addDamage(src, breakDamage(sim, src), 'Break (Cloudflame)'); }
+        return;
+      }
       e.tough -= raw;
       if (e.tough <= 1e-9) sim.breakEnemy(e, src);
     });
     // Super Break: Toughness reduction dealt to already-broken enemies.
     const sb = (st.superBreak || 0) + (st.fireflySB ? (st.be >= 3 ? 1.5 : st.be >= 1.5 ? 1 : 0) : 0);
     if (sbTough > 0 && sb > 0) {
-      const dmg = BREAK_LEVEL_MULT * (sbTough / 10) * (1 + st.be) * sb * common(sim, { ...st, cr: 0 }) / (0.9 + 0.1 * sim.brokenShare());
+      const dmg = BREAK_LEVEL_MULT * (sbTough / 10) * (1 + st.be) * sb * common(sim, { ...st, cr: 0 }, 'Break') / (0.9 + 0.1 * sim.brokenShare());
       sim.addDamage(src, dmg, 'Super Break');
     }
   }

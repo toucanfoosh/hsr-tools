@@ -361,6 +361,7 @@
     breakEnemy(e, by) {
       e.broken = true;
       e.tough = 0;
+      e.luster = (this.lusterPct || 0) * this.enemyToughness;
       this.delay(e, 0.25);
       this.record(e, 'Break', { by: by && by.name });
       if (window.AVDamage) this.addDamage(by, window.AVDamage.breakDamage(this, by), 'Break');
