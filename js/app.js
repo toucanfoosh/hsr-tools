@@ -37,6 +37,8 @@
   // Opens the shared modal with `html`; returns { el, close }. Esc / backdrop click close it.
   function openModal(html, { onClose } = {}) {
     const modal = document.getElementById('modal');
+    const tip = document.getElementById('tooltip');
+    if (tip) { tip.hidden = true; tip.classList.remove('info'); }
     modal.hidden = false;
     modal.innerHTML = html;
     const onKey = (e) => { if (e.key === 'Escape') close(); };

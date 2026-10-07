@@ -211,6 +211,17 @@
       <div><span class="plus">+</span>Add character</div>
     </div>`;
 
+  // A relic set / planar slot as an icon tile (name and effects on hover and in the picker).
+  function relicTile(i, kind, id, tag) {
+    const r = id && RELICS[id];
+    const tip = r ? `${r.name}\n${r.text.map((t, k) => (r.planar ? t : `${k ? '4pc' : '2pc'}: ${t}`)).join('\n')}` : '';
+    return `<button type="button" class="relic-tile${r ? '' : ' empty'}" data-action="gear" data-kind="${kind}" data-slot="${i}"
+      ${r ? `data-info="${attr(esc(tip))}"` : `title="Choose ${kind === 'planar' ? 'a planar ornament' : kind === 'set2' ? 'a 2nd set (2-piece)' : 'a relic set'}"`}>
+      ${r ? `<img src="${img.relic(id)}" alt="${attr(esc(r.name))}">` : '<span class="plus">+</span>'}
+      <span class="rt-tag">${tag}</span>
+    </button>`;
+  }
+
   // A gear slot shown as a button with its icon; opens the searchable gear picker.
   function gearButton(i, kind, src, name, sub, signature) {
     return `<button type="button" class="gear-btn" data-action="gear" data-kind="${kind}" data-slot="${i}">
@@ -254,15 +265,12 @@
 ` : ''}
         </div>
 
-        <div class="field"><span>Relic sets</span>
-          ${gearButton(i, 'set1', s.set1 && img.relic(s.set1), s.set1 ? RELICS[s.set1].name : 'No relic set',
-            s.set1 ? (s.set2 === 'same' ? '4-piece' : '2-piece') : 'Tap to choose')}
-          ${s.set1 ? gearButton(i, 'set2', s.set2 !== 'same' && img.relic(s.set2), s.set2 === 'same' ? 'No 2nd set' : RELICS[s.set2].name,
-            s.set2 === 'same' ? 'Using the 4-piece bonus' : '2-piece') : ''}
-        </div>
-        <div class="field"><span>Planar ornament</span>
-          ${gearButton(i, 'planar', s.planar && img.relic(s.planar), s.planar ? RELICS[s.planar].name : 'No planar ornament',
-            s.planar ? '2-piece' : 'Tap to choose')}
+        <div class="field"><span>Relics &amp; planar</span>
+          <div class="relic-tiles">
+            ${relicTile(i, 'set1', s.set1, s.set1 ? (s.set2 === 'same' ? '4pc' : '2pc') : 'Set')}
+            ${s.set1 ? relicTile(i, 'set2', s.set2 !== 'same' && s.set2, s.set2 === 'same' ? '+2pc' : '2pc') : ''}
+            ${relicTile(i, 'planar', s.planar, 'Planar')}
+          </div>
         </div>
 
         ${spdField(s, ch, i, f)}
@@ -594,6 +602,7 @@
   // ---------------------------------------------------------------- gear picker
   // Searchable popup with icons for light cones, relic sets and planar ornaments.
   function openGearPicker(slotIdx, kind) {
+    if (kind !== 'lc') return openRelicPicker(slotIdx, kind);
     const s = state.slots[slotIdx];
     const ch = CHARS[s.charId];
     const ownedLc = Account.ownedLightCones();
@@ -681,6 +690,83 @@
     const lc = LCS[id];
     if (!lc) return 1;
     return lc.rarity <= 4 || String(id).startsWith('24') ? 5 : 1;
+  }
+
+  // Stat categories for filtering sets by their bonus.
+  const SET_STATS = [
+    ['SPD', /SPD/], ['ATK', /\bATK\b/], ['CRIT Rate', /CRIT Rate/], ['CRIT DMG', /CRIT DMG/], ['Break', /Break/],
+    ['Energy', /Energy/], ['HP', /\bHP\b|Max HP/], ['DEF', /\bDEF\b/], ['Effect Hit', /Effect Hit Rate/], ['Effect RES', /Effect RES/],
+    ['Healing', /Healing/], ['Element DMG', /(Physical|Fire|Ice|Lightning|Wind|Quantum|Imaginary) DMG/], ['Follow-up', /Follow-Up/],
+    ['DoT', /DoT/], ['Shield', /Shield/], ['Elation', /Elation|Punchline/], ['Memosprite', /memosprite/i], ['Skill Points', /Skill Point/],
+  ];
+  // Icon-grid picker for relic sets and planar ornaments: search by name or effect, filter by stat.
+  function openRelicPicker(slotIdx, kind) {
+    const s = state.slots[slotIdx];
+    const build = Account.buildFor(s.charId);
+    const equipped = new Set(build ? (kind === 'planar' ? [build.planar] : [build.set1, build.set2]).filter(Boolean) : []);
+    const planar = kind === 'planar';
+    const pool = planar ? planars : relicSets.filter((r) => kind !== 'set2' || r.id !== s.set1);
+    const current = String(s[kind]);
+    const title = planar ? 'Planar ornament' : kind === 'set2' ? '2nd relic set (2-piece)' : 'Relic set';
+    const f = { q: '', stat: '', scope: kind === 'set2' || planar ? 0 : 'any' };
+    const noneLabel = kind === 'set2' ? 'None: use the 4-piece' : 'None';
+    const m = window.HSRTools.openModal(`
+      <div class="card modal-box relic-box" role="dialog" aria-label="${esc(title)}">
+        <div class="modal-head">
+          <div class="top"><h3>${esc(title)}</h3><button class="btn ghost" data-close>Close</button></div>
+          <input type="search" placeholder="Search by name or effect…" data-q>
+          <div class="filters">${SET_STATS.map(([k]) => `<button class="pill toggle" data-stat="${k}">${k}</button>`).join('')}</div>
+          ${planar || kind === 'set2' ? '' : `<div class="filters scope"><span class="muted small">Stat filter looks at:</span>
+            <button class="pill toggle on" data-scope="any">Either bonus</button><button class="pill toggle" data-scope="0">2-piece</button><button class="pill toggle" data-scope="1">4-piece</button></div>`}
+        </div>
+        <div class="relic-grid-pick" data-list></div>
+        <div class="relic-preview" data-preview></div>
+      </div>`);
+    const list = m.el.querySelector('[data-list]');
+    const prev = m.el.querySelector('[data-preview]');
+    const effects = (r) => r.text.map((t, k) => (r.planar ? t : `<b>${k ? '4pc' : '2pc'}</b> ${esc(t)}`)).join('<br>');
+    const show = (id) => {
+      const r = RELICS[id];
+      prev.innerHTML = r ? `<img src="${img.relic(r.id)}" alt=""><div><div class="rp-name">${esc(r.name)}</div><div class="rp-text">${effects(r)}</div></div>`
+        : '<div class="muted small">Hover or focus a set to see its bonuses.</div>';
+    };
+    const draw = () => {
+      const needle = f.q.toLowerCase();
+      const re = f.stat && SET_STATS.find(([k]) => k === f.stat)[1];
+      const items = pool.filter((r) => (!needle || r.name.toLowerCase().includes(needle) || r.text.join(' ').toLowerCase().includes(needle))
+        && (!re || (f.scope === 'any' ? r.text : [r.text[+f.scope] || '']).some((t) => re.test(t))));
+      items.sort((a, b) => (equipped.has(b.id) - equipped.has(a.id)) || (+b.id - +a.id));
+      const none = kind === 'set2' ? 'same' : '';
+      list.innerHTML = `<button type="button" class="rp-tile none${current === none || (!current && !none) ? ' current' : ''}" data-id="${none}" title="${esc(noneLabel)}"><span>∅</span><i>${esc(noneLabel)}</i></button>`
+        + (items.map((r) => `<button type="button" class="rp-tile${r.id === current ? ' current' : ''}" data-id="${r.id}" data-hover="${r.id}" title="${attr(esc(r.name))}">
+            <img src="${img.relic(r.id)}" alt="${attr(esc(r.name))}" loading="lazy">${equipped.has(r.id) ? '<span class="rp-dot" title="Equipped"></span>' : ''}</button>`).join('')
+          || '<div class="muted gear-empty">No matches.</div>');
+    };
+    m.el.addEventListener('mouseover', (e) => { const t = e.target.closest('[data-hover]'); if (t) show(t.dataset.hover); });
+    m.el.addEventListener('focusin', (e) => { const t = e.target.closest('[data-hover]'); if (t) show(t.dataset.hover); });
+    m.el.onclick = (e) => {
+      if (e.target.closest('[data-close]')) return m.close();
+      const st = e.target.closest('[data-stat]');
+      if (st) {
+        f.stat = f.stat === st.dataset.stat ? '' : st.dataset.stat;
+        m.el.querySelectorAll('[data-stat]').forEach((b) => b.classList.toggle('on', b.dataset.stat === f.stat));
+        return draw();
+      }
+      const sc = e.target.closest('[data-scope]');
+      if (sc) { f.scope = sc.dataset.scope; m.el.querySelectorAll('[data-scope]').forEach((b) => b.classList.toggle('on', b === sc)); return draw(); }
+      const it = e.target.closest('[data-id]');
+      if (!it) return;
+      s[kind] = it.dataset.id;
+      if (kind === 'set1' && (!s.set1 || s.set2 === s.set1)) s.set2 = 'same';
+      s.fromAccount = false;
+      m.close();
+      changed(true);
+    };
+    const qi = m.el.querySelector('[data-q]');
+    qi.oninput = () => { f.q = qi.value; draw(); };
+    draw();
+    show(current && current !== 'same' ? current : null);
+    setTimeout(() => qi.focus(), 0);
   }
 
   function relicItems(list) {
