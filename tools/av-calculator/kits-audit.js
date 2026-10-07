@@ -532,6 +532,169 @@
       turnEnd(sim, u) { sim.removeBuff(u, 'scoop'); },
       ult(sim, u) { u.state.next = true; },
     },
+
+    // ------------------------------------------------------------------ 1202 Tingyun
+    1202: {
+      desc: 'Benediction: when the target attacks, +40% of their ATK as Lightning Additional DMG (E4: 60%); when Tingyun attacks, the target adds 60% of their ATK. Knell Subdual: Basic ATK +40% DMG.',
+      blessed(sim, u) { const tg = sim.targetOf(u); return tg && sim.hasBuff(tg, 'benediction') ? tg : null; },
+      allyAttack(sim, u, a, t) {
+        if (t === 'Elation' || this.blessed(sim, u) !== a) return;
+        sim.addDamage(a, std(sim, a, { atk: E(u) >= 4 ? 0.6 : 0.4 }), 'Benediction');
+      },
+      afterDamage(sim, u, act) {
+        const tg = this.blessed(sim, u);
+        if (tg && isAtk(act)) sim.addDamage(tg, std(sim, tg, { atk: 0.6 }), 'Violet Sparknado');
+      },
+      dmgScale(sim, u, act) { return act === 'Basic' ? 1 + 0.4 / (1 + st(sim, u).dmg) : 1; },
+    },
+    // ------------------------------------------------------------------ 1203 Luocha
+    1203: {
+      desc: 'Abyss Flower: +1 per Skill and Ultimate; at 2 he deploys the Zone for 2 of his turns. E1: all allies +20% ATK while the Zone is up. E6: Ultimate −20% All-Type RES for 2 turns. (His automatic Skill at ≤50% HP needs HP tracking, which isn\'t simulated; Skills come from the action pattern.)',
+      battleStart(sim, u) { u.state.flower = 0; },
+      flower(sim, u) {
+        u.state.flower += 1;
+        if (u.state.flower < 2) return;
+        u.state.flower = 0;
+        if (E(u) >= 1) team(sim, 'luochaZone', { atkPct: 0.2 }, 2, { tick: 'owner', owner: u });
+      },
+      action(sim, u, t) { if (t === 'Skill') this.flower(sim, u); },
+      ult(sim, u) { this.flower(sim, u); if (E(u) >= 6) emod(sim, 'luochaE6', { res: 0.2 }, 2); },
+    },
+    // ------------------------------------------------------------------ 1204 Jing Yuan
+    1204: {
+      desc: 'Lightning-Lord hits splash 25% to adjacent enemies (E1: 50%). War Marshal: +10% CRIT Rate for 2 turns after Skill. Battalia Crush: Lightning-Lord +25% CRIT DMG when it acts with 6+ hits. E2: after Lightning-Lord acts, Basic / Skill / Ultimate +20% DMG for 2 turns. E6: each hit makes the target take +12% DMG until the turn ends (3 stacks).',
+      action(sim, u, t) { if (t === 'Skill') self(sim, u, 'warMarshal', { cr: 0.1 }, 2); },
+      allyAction(sim, u, actor) {
+        if (E(u) >= 2 && actor === u.state.ll) self(sim, u, 'jyE2', { dmg_Basic: 0.2, dmg_Skill: 0.2, dmg_Ult: 0.2 }, 2);
+      },
+      dmgScale(sim, u, act, extra, unit) {
+        if (!unit || unit.name !== 'Lightning-Lord') return 1;
+        const k = n(sim), hits = u.state.lastHits || 3;
+        let f = 1 + (E(u) >= 1 ? 0.5 : 0.25) * (k > 1 ? 2 * (k - 1) / k : 0);
+        if (hits >= 6) { const s = st(sim, u), cr = Math.min(1, s.cr + (s.cr_FUA || 0)); const cd = s.cd + (s.cd_FUA || 0); f *= (1 + cr * (cd + 0.25)) / (1 + cr * cd); }
+        if (E(u) >= 6) { let v = 0; for (let i = 0; i < hits; i++) v += 1 + 0.12 * Math.min(3, i); f *= v / hits; }
+        return f;
+      },
+    },
+    // ------------------------------------------------------------------ 1205 Blade
+    1205: {
+      desc: 'Hellscape (Skill, 1 SP, doesn\'t end the turn): +40% DMG and Enhanced Basic ATK (Forest of Swords) for 3 turns; consuming HP adds Charge. Ultimate adds 120% (adjacent 60%) of the HP-loss tally, assumed at its cap of 90% Max HP (E1: +150% of the tally to the target). Talent follow-up +20% DMG (E6: +50% Max HP). E2: +15% CRIT Rate in Hellscape. E4: +20% Max HP each time HP drops to 50% (2 stacks; from his Ultimate).',
+      turnStart(sim, u) {
+        if (sim.hasBuff(u, 'hellscape') || sim.sp < 1) return;
+        sim.useSP(1, u);
+        const ev = sim.record(u, 'FollowUp', { label: 'Hellscape (Skill)', n: u.actions + 1 });
+        const b = self(sim, u, 'hellscape', { dmg: 0.4, ...(E(u) >= 2 ? { cr: 0.15 } : {}) }, 3);
+        if (b) b.appliedTurn = -1; // this turn's Forest of Swords is the first of the 3
+        window.AVEnergyKits[1205].charge(sim, u);
+        sim.snap(ev, u);
+      },
+      actionType(sim, u) { return sim.hasBuff(u, 'hellscape') ? 'Enhanced' : undefined; },
+      ult(sim, u) { if (E(u) >= 4) self(sim, u, 'bladeE4', { hpPct: 0.2 }, Infinity, { maxStacks: 2 }); },
+      extraDamage(sim, u, act) {
+        const tally = 0.9 * st(sim, u).HP;
+        if (act === 'Ult') return this.flat(sim, u, tally * (1.2 + (E(u) >= 1 ? 1.5 : 0)) + tally * 0.6 * Math.min(2, n(sim) - 1), 'Ult');
+        if (E(u) >= 1 && act === 'Enhanced') return this.flat(sim, u, tally * 1.5, null);
+        if (E(u) >= 6 && act === 'FollowUp') return std(sim, u, { hp: 0.5 }, 'FUA') * n(sim);
+        return 0;
+      },
+      // Damage of a flat base amount with Blade's multipliers (std scales a stat multiplier).
+      flat(sim, u, base, type) { const hp = st(sim, u).HP; return hp > 0 ? std(sim, u, { hp: base / hp }, type) : 0; },
+      dmgScale(sim, u, act) { return act === 'FollowUp' ? 1 + 0.2 / (1 + st(sim, u).dmg) : 1; },
+    },
+    // ------------------------------------------------------------------ 1206 Sushang
+    1206: {
+      desc: 'Talent: any Weakness Break gives +20% SPD for 2 turns (E6: stacks to 2, start with 1). Vanquisher: after Basic / Skill, advance 15% if an enemy is Broken. Sword Stance: Skill 33% chance (certain vs Broken) of +100% ATK; Ultimate +30% ATK and 2 extra chances at half DMG for 2 turns; Riposte +2.5% per Sword Stance (10). E1: Skill vs a Broken target refunds 1 SP. E4: +40% Break Effect.',
+      battleStart(sim, u) { u.state.riposte = 0; if (E(u) >= 4) self(sim, u, 'sushangE4', { be: 0.4 }, Infinity); if (E(u) >= 6) sim.addBuff(u, { id: 'dancingBlade', pct: 0.2, turns: 2, maxStacks: 2 }); },
+      weaknessBreak(sim, u) {
+        const b = sim.addBuff(u, { id: 'dancingBlade', pct: 0.2, turns: 2, maxStacks: E(u) >= 6 ? 2 : 1 });
+        if (b && b.stacks > 1 && E(u) >= 6) b.pct = 0.4;
+      },
+      ult(sim, u) { self(sim, u, 'dawnHerald', { atkPct: 0.3 }, 2); },
+      action(sim, u, t) { if (E(u) >= 1 && t === 'Skill' && sim.enemies()[0] && sim.enemies()[0].broken) sim.gainSP(1, u); },
+      afterDamage(sim, u, act) { if ((act === 'Basic' || act === 'Skill') && sim.brokenShare() > 0) sim.advance(u, 0.15); },
+      extraDamage(sim, u, act) {
+        if (act !== 'Skill') return 0;
+        const e0 = sim.enemies()[0], p = e0 && e0.broken ? 1 : 0.33;
+        const count = p + (sim.hasBuff(u, 'dawnHerald') ? 2 * p * 0.5 : 0);
+        const dmg = std(sim, u, { atk: 1 }) * count * (1 + 0.025 * u.state.riposte);
+        u.state.riposte = Math.min(10, u.state.riposte + p * (sim.hasBuff(u, 'dawnHerald') ? 3 : 1));
+        return dmg;
+      },
+    },
+    // ------------------------------------------------------------------ 1207 Yukong
+    1207: {
+      desc: 'Roaring Bowstrings: Skill gives 2 stacks; each ally turn end removes 1 (not the turn she gains them). While active: all allies +80% ATK, +2 Energy per ally action, E4: +30% DMG for her; Ultimate adds +28% CRIT Rate and +65% CRIT DMG to all allies for as long as it lasts (E6: Ultimate gives 1 stack). Bowmaster: Imaginary allies +12% DMG. Talent: Basic ATK +80% ATK and double Toughness DMG, every other turn. E2: +5 Energy the first time each ally is at full Energy (resets on her Ultimate).',
+      battleStart(sim, u) {
+        u.state.bow = 0; u.state.full = new Set(); u.state.talentCd = 0;
+        sim.chars().filter((a) => a.cfg.char.element === 'Imaginary').forEach((a) => sim.addBuff(a, { id: 'bowmaster', stats: { dmg: 0.12 }, turns: Infinity }));
+      },
+      setBow(sim, u, k) {
+        u.state.bow = k;
+        if (k > 0) { team(sim, 'bowstrings', { atkPct: 0.8 }, Infinity); if (E(u) >= 4) self(sim, u, 'yukongE4', { dmg: 0.3 }, Infinity); }
+        else sim.units.forEach((x) => { sim.removeBuff(x, 'bowstrings'); sim.removeBuff(x, 'bowUlt'); sim.removeBuff(x, 'yukongE4'); });
+      },
+      action(sim, u, t) {
+        if (t === 'Skill') { this.setBow(sim, u, 2); u.state.fresh = true; }
+        if (u.state.bow > 0) G(sim, u, 2);
+      },
+      allyAction(sim, u, a) { if (u.state.bow > 0 && a.kind === 'char') G(sim, u, 2); },
+      tick(sim, u) { if (u.state.fresh) { u.state.fresh = false; return; } if (u.state.bow > 0) this.setBow(sim, u, u.state.bow - 1); },
+      turnEnd(sim, u) { this.tick(sim, u); },
+      allyTurnEnd(sim, u) { this.tick(sim, u); },
+      ult(sim, u) {
+        if (E(u) >= 6) this.setBow(sim, u, Math.min(2, u.state.bow + 1));
+        if (u.state.bow > 0) team(sim, 'bowUlt', { cr: 0.28, cd: 0.65 }, Infinity);
+        u.state.full.clear();
+      },
+      allyTurnStart(sim, u) {
+        if (E(u) < 2) return;
+        for (const a of sim.chars()) if (a.maxEnergy > 0 && a.energy >= a.maxEnergy && !u.state.full.has(a)) { u.state.full.add(a); G(sim, u, 5); }
+      },
+      turnStart(sim, u) { if (u.state.talentCd > 0) u.state.talentCd -= 1; },
+      extraDamage(sim, u, act) {
+        if (act !== 'Basic' || u.state.talentCd > 0) return 0;
+        u.state.talentCd = 1;
+        const ab = u.cfg.char.combat.abilities.find((a) => a.type === 'Basic');
+        AD().applyToughness(sim, u, ab, u);
+        return std(sim, u, { atk: 0.8 }, 'Basic');
+      },
+    },
+    // ------------------------------------------------------------------ 1208 Fu Xuan
+    1208: {
+      desc: 'Matrix of Prescience (Skill, 3 of her turns): all allies +12% CRIT Rate (E1: +30% CRIT DMG) and +6% of her Max HP. Taiyi: Skill +20 Energy if the Matrix is still active. E4: +5 Energy when another ally is hit under the Matrix. E6: Ultimate adds 200% of the team\'s HP-loss tally, assumed at its cap of 120% of her Max HP.',
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        if (sim.hasBuff(u, 'knowledge')) G(sim, u, 20);
+        const hp = 0.06 * st(sim, u).HP;
+        team(sim, 'knowledge', { cr: 0.12, hp, ...(E(u) >= 1 ? { cd: 0.3 } : {}) }, 3, { tick: 'owner', owner: u });
+      },
+      allyHit(sim, u, v) { if (E(u) >= 4 && sim.hasBuff(u, 'knowledge')) G(sim, u, 5); },
+      extraDamage(sim, u, act) { return E(u) >= 6 && act === 'Ult' ? std(sim, u, { hp: 2 * 1.2 }, 'Ult') : 0; },
+    },
+    // ------------------------------------------------------------------ 1209 Yanqing
+    1209: {
+      desc: 'Soulsteel Sync (Skill, 1 turn, lost when hit): +20% CRIT Rate, +30% CRIT DMG, lower aggro (E2: +10% Energy Regen). Ultimate: +60% CRIT Rate, +50% CRIT DMG with Sync, for 1 turn. Talent follow-ups have a 65% base chance to Freeze for 1 turn. Icing on the Kick: +30% ATK Additional DMG after attacks (enemy assumed Ice-weak). Gentle Blade: +10% SPD for 2 turns on CRIT. E1: +60% ATK vs Frozen. E4: +12% Ice RES PEN.',
+      battleStart(sim, u) { if (E(u) >= 4) self(sim, u, 'yanqingE4', { resPen: 0.12 }, Infinity); },
+      action(sim, u, t) {
+        if (t === 'Skill') { self(sim, u, 'sync', { cr: 0.2, cd: 0.3, ...(E(u) >= 2 ? { err: 0.1 } : {}) }, 1); }
+        if (isAtk(t)) this.after(sim, u);
+      },
+      ult(sim, u) { self(sim, u, 'raining', { cr: 0.6, ...(sim.hasBuff(u, 'sync') ? { cd: 0.5 } : {}) }, 1); this.after(sim, u); },
+      after(sim, u) { if (sim.chance(u, 'gentle', Math.min(1, st(sim, u).cr) / 0.8)) sim.addBuff(u, { id: 'gentleBlade', pct: 0.1, turns: 2 }); },
+      followUpDone(sim, u) {
+        const e = sim.enemies()[0];
+        if (e && sim.chance(u, 'freeze', 0.65)) sim.freezeEnemy(e, u, { atk: 0.5 });
+      },
+      hit(sim, u) { sim.removeBuff(u, 'sync'); },
+      tauntMult(sim, u) { return sim.hasBuff(u, 'sync') ? 0.4 : 1; },
+      extraDamage(sim, u, act) {
+        if (!isAtk(act)) return 0;
+        let d = std(sim, u, { atk: 0.3 });
+        const e = sim.enemies()[0];
+        if (E(u) >= 1 && e && e.frozen) d += std(sim, u, { atk: 0.6 });
+        return d;
+      },
+    },
   };
 
   window.AVAuditKits = kits;

@@ -170,17 +170,8 @@
       hit(sim, u) { this.charge(sim, u); },
     },
     1206: { desc: 'Energy: standard.' }, // Sushang
-    1207: { // Yukong: +2 per ally action while Roaring Bowstrings is up (after her Skill, 2 turns).
-      desc: 'Energy: +2 each time an ally acts while Roaring Bowstrings is active (2 of her turns after Skill).',
-      action(sim, u, t) { if (t === 'Skill') u.state.bow = 2; },
-      turnStart(sim, u) { if (u.state.bow > 0) u.state.bow -= 1; },
-      allyAction(sim, u, actor) { if (u.state.bow > 0 && actor.kind === 'char') G(sim, u, 2); },
-    },
-    1208: { // Fu Xuan: Skill +20 while Matrix is active (always after first Skill).
-      desc: 'Energy: Skill +20 more while Matrix of Prescience is active (from the second Skill on).',
-      action(sim, u, t) { if (t === 'Skill') { if (u.state.matrix) G(sim, u, 20); u.state.matrix = true; } },
-      allyHit(sim, u) { if (E(u) >= 4 && u.state.matrix) G(sim, u, 5); },
-    },
+    1207: { desc: 'Energy: see the audit kit.' }, // Yukong
+    1208: { desc: 'Energy: see the audit kit.' }, // Fu Xuan
     1209: { // Yanqing: follow-up 60% after attacks (+10), modelled as 3 in 5.
       desc: 'Energy: follow-up (+10) after 60% of his attacks (every 5 attacks: 3 follow-ups).',
       action(sim, u, t) {
