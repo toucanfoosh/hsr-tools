@@ -267,6 +267,7 @@
       },
       allyUlt(sim, u) { self(sim, u, 'dragonCore', { dmg: 0.6 }, 2); this.gainCR(sim, u, 3); },
       dmgScale(sim, u, act) {
+        if (act === 'Ult' && u.state.gilDouble) { u.state.gilDouble = false; return 2; }
         if (act === 'Skill' && u.state.boost) return 1 + u.state.boost * (0.14 + (E(u) >= 2 ? 0.07 : 0)) / 1.5;
         if (act === 'Enhanced') { const k = n(sim); return k === 1 ? (1.5 + 2.2) / 1.5 : k === 2 ? 2 : 1; }
         return 1;
@@ -2268,6 +2269,185 @@
         const P = window.AVEffects.P, a = P(u, 'Ultra', 0), b = P(u, 'Ultra', 2);
         return (a * k + b * (5 + extra)) / (a * k + b * 5);
       },
+    },
+
+    // ------------------------------------------------------------------ 1506 Silver Wolf LV.999
+    1506: {
+      desc: 'Hidden MMR: +0.4% CRIT Rate per point; past 100% CRIT Rate, +0.8% CRIT DMG per point instead. Enhanced Basic ATK: +15% DMG per 60 MMR (2 stacks); with Certified Banger it deals Elation DMG at the same multiplier (E6: merrymakes 50%). Top Loot Box (Godmode, Certified Banger, on SP spent): 90% Imaginary Elation DMG split across enemies (Big Flipping Sword: +20% of it as True DMG). Only her Godmode Elation Skill (Honkai-DMG Demo: 6 × 90%) deals DMG (E4: counts 5× the Punchline). False Ending Speedrun: at 160+ SPD +50% Elation and +2% per SPD above 160 (max 100). E1: in Godmode enemies take +20% DMG. E6: Absolute Weakness: enemies\' base RES drops to 0.',
+      battleStart(sim, u) {
+        const sp = sim.spd(u);
+        self(sim, u, 'mmrStats', {
+          cr: (s, a) => Math.min(Math.max(0, 1 - ((a.stats0 && a.stats0.cr) || 0)), 0.004 * (a.state.mmr || 0)),
+          cd: (s, a) => { const base = (a.stats0 && a.stats0.cr) || 0, crPts = Math.max(0, (1 - base) / 0.004); return 0.008 * Math.max(0, (a.state.mmr || 0) - crPts); },
+          elation: sp >= 160 ? 0.5 + 0.02 * Math.min(100, sp - 160) : 0,
+        }, Infinity);
+        if (E(u) >= 6) emod(sim, 'absoluteWeakness', { res: sim.enemyRes != null ? sim.enemyRes : 0.2 }, Infinity);
+        u.state.lastLoot = 0;
+      },
+      ult(sim, u) { if (E(u) >= 1) emod(sim, 'sw999E1', { vuln: 0.2 }, Infinity); },
+      action(sim, u, t) {
+        if (t === 'Enhanced') { u.state.mmrAtHit = u.state.mmr || 0; if (E(u) >= 6) self(sim, u, 'sw999E6', { merrymake: 0.5 }, Infinity); }
+      },
+      afterDamage(sim, u, act) {
+        sim.removeBuff(u, 'sw999E6');
+        if (act === 'Enhanced' && !u.state.god) sim.enemyMods = (sim.enemyMods || []).filter((m) => m.id !== 'sw999E1');
+      },
+      dmgScale(sim, u, act, extra) {
+        if (act === 'Elation') {
+          if (!u.state.god) return 0;
+          if (E(u) >= 4 && extra && extra.punchline > 0) { const pm = AD().punchlineMult; return pm(5 * extra.punchline) / pm(extra.punchline); }
+          return 1;
+        }
+        if (act === 'Enhanced') return (sim.cbTotal(u) > 0 ? 0 : 1) * (1 + 0.15 * Math.min(2, Math.floor((u.state.mmrAtHit || 0) / 60)));
+        return 1;
+      },
+      extraDamage(sim, u, act) {
+        if (act !== 'Enhanced' || !(sim.cbTotal(u) > 0)) return 0;
+        const P = window.AVEffects.P, ab = u.cfg.char.combat.abilities.find((a) => a.name === 'Bonus Stage: αWolf Instant');
+        const row = ab && ab.params ? ab.params[Math.min(ab.params.length, 6) - 1] : [2.4, 0, 100, 1];
+        return AD().elation(sim, u, (row[0] + row[3]) * (1 + 0.15 * Math.min(2, Math.floor((u.state.mmrAtHit || 0) / 60))), sim.cbTotal(u));
+      },
+      spUsed(sim, u) {
+        if (u.state.loot === u.state.lastLoot || u.state.loot === undefined) return;
+        u.state.lastLoot = u.state.loot;
+        const d = AD().elation(sim, u, 0.9, sim.cbTotal(u));
+        sim.addDamage(u, d, 'Top Loot Box');
+        if (u.state.loot === 0) sim.addDamage(u, 0.2 * d, 'True DMG');
+      },
+    },
+    // ------------------------------------------------------------------ 1507 Mortenax Blade
+    1507: {
+      desc: 'Fornax Ex Corpore (first Ultimate) deals no DMG; in Infinite Fury his Ultimate is Tenax Per Ignem (E6: ×1.5). Balefire Bind (Ultimate, and each ally attack in the Zone): −30% DEF and +50% DMG taken for 2 turns. Infinite Fury: +20% CRIT Rate, +60% CRIT DMG. Heart, Refined: with other Nihility teammates allies\' Ultimate DMG +75%, otherwise his DMG +75% (in the Zone). E1: Zone −20% All-Type RES; extra Skills delay the countdown 15%. E2: allies\' Ultimates count as follow-ups; follow-up DMG +75%. E4: Zone +50% DMG to allies.',
+      battleStart(sim, u) {
+        self(sim, u, 'fury', { cr: (s, a) => (a.state.fury ? 0.2 : 0), cd: (s, a) => (a.state.fury ? 0.6 : 0) }, Infinity);
+        u.state.nih = sim.allies(u).some((a) => a.cfg.char.path === 'Nihility');
+      },
+      zoneOn(sim, u) { return !!u.state.fury; },
+      ult(sim, u) {
+        u.state.tenax = !!u.state.inFury; u.state.inFury = true;
+        emod(sim, 'balefire', { def: 0.3, vuln: 0.5 }, 2);
+        if (!u.state.tenax) {
+          if (u.state.nih) team(sim, 'heart', { dmg_Ult: (s, a) => (u.state.fury ? 0.75 : 0) }, Infinity);
+          else self(sim, u, 'heart', { dmg: (s, a) => (a.state.fury ? 0.75 : 0) }, Infinity);
+          if (E(u) >= 1) emod(sim, 'mortenaxE1', { res: 0.2 }, Infinity);
+          if (E(u) >= 2) team(sim, 'mortenaxE2', { dmg_FUA: (s, a) => (u.state.fury ? 0.75 : 0) }, Infinity);
+          if (E(u) >= 4) team(sim, 'mortenaxE4', { dmg: (s, a) => (u.state.fury ? 0.5 : 0) }, Infinity);
+        }
+      },
+      sync(sim, u) {
+        if (u.state.fury) return;
+        if (u.state.inFury) { u.state.inFury = false; sim.enemyMods = (sim.enemyMods || []).filter((m) => m.id !== 'mortenaxE1'); }
+      },
+      turnStart(sim, u) { this.sync(sim, u); },
+      allyAction(sim, u) { this.sync(sim, u); },
+      allyAttack(sim, u, a) { if (u.state.fury && a.kind === 'char') emod(sim, 'balefire', { def: 0.3, vuln: 0.5 }, 2); },
+      followUpDone(sim, u, label) {
+        if (label !== 'Extra Skill' || E(u) < 1) return;
+        const cd = sim.units.find((x) => x.key === `${u.key}:fury` && x.alive);
+        if (cd) sim.delay(cd, 0.15);
+      },
+      dmgAbility(sim, u, act) { return act === 'Ult' ? (u.state.tenax ? 'Tenax Per Ignem' : 'Fornax Ex Corpore') : undefined; },
+      dmgScale(sim, u, act) { return act === 'Ult' && u.state.tenax && E(u) >= 6 ? 1.5 : 1; },
+    },
+    // ------------------------------------------------------------------ 1508 Rin Tohsaka
+    1508: {
+      desc: 'Gem Energy: 20 at battle start, +1 per SP any ally spends or recovers, Ultimate +12 (E6: +24). At 15+ Gem Energy (or 7+ SP) her Skill becomes Second Magic Experiment: 90% to all, then 90% to a random enemy per 3 Gem Energy (max 33), first turning SP above 2 into 2 Gem Energy each; Ladylike Poise: +20% SPD for 3 turns after it. Gem Magecraft: +70% CRIT DMG for 2 turns to allies who spend or recover SP (E4: stacks twice on her). Elegant Conduct: +150% ATK and +15% Quantum RES PEN (Archer too). Freeform Tohsaka Style: after Archer\'s Skill with ≤3 SP (or his 5th in one Circuit Connection), a Joint follow-up: 300% of her ATK and 300% of his to all enemies, +4 SP (once per her turn). E1: an Enhanced Skill spending 30+ Gem Energy leaves an equal Shadow Gem that pays for the next one. E2: her Skill +30% DMG; allies\' Skill DMG ×1.3. E6: +20% RES PEN.',
+      battleStart(sim, u) {
+        u.state.gem = 20; u.state.shadow = 0;
+        const archer = sim.chars().find((a) => a.cfg.char.id === '1015');
+        [u, archer].filter(Boolean).forEach((a) => sim.addBuff(a, { id: 'elegant', stats: { atkPct: 1.5, resPen: 0.15 }, turns: Infinity }));
+        if (E(u) >= 2) { self(sim, u, 'rinE2', { dmg_Skill: 0.3 }, Infinity); team(sim, 'rinE2team', { dmg_Skill: 0.3 }, Infinity); }
+        if (E(u) >= 6) self(sim, u, 'rinE6', { resPen: 0.2 }, Infinity);
+      },
+      spUsed(sim, u, by, k) { u.state.gem += k; if (by === u && E(u) >= 4) self(sim, u, 'rinCD4', { cd: 0.7 }, 2, { maxStacks: 2 }); },
+      spGained(sim, u, by, k) { u.state.gem += k || 1; if (by && by.kind === 'char') sim.addBuff(by, { id: 'rinCD', stats: { cd: 0.7 }, turns: 2 }); },
+      ult(sim, u) { u.state.gem += E(u) >= 6 ? 24 : 12; },
+      enhanced(sim, u) { return u.state.shadow > 0 || u.state.gem >= 15 || sim.sp >= 7; },
+      dmgAbility(sim, u, act) { return act === 'Skill' && u.state.second ? 'Second Magic Experiment' : undefined; },
+      action(sim, u, t) {
+        u.state.second = t === 'Skill' && this.enhanced(sim, u);
+        if (!u.state.second) return;
+        let gems, fromShadow = false;
+        if (u.state.shadow > 0) { gems = u.state.shadow; u.state.shadow = 0; fromShadow = true; }
+        else {
+          while (sim.sp > 2) { sim.useSP(1, u); u.state.gem += 2; }
+          gems = u.state.gem;
+        }
+        u.state.cycles = Math.min(33, Math.floor(gems / 3));
+        const spent = 3 * u.state.cycles;
+        if (!fromShadow) { u.state.gem -= Math.min(u.state.gem, spent); if (E(u) >= 1 && spent >= 30) u.state.shadow = spent; }
+        sim.addBuff(u, { id: 'ladylike', pct: 0.2, turns: 3 });
+      },
+      dmgScale(sim, u, act) {
+        if (act !== 'Skill' || !u.state.second) return 1;
+        const k = n(sim);
+        return (0.9 * k + 0.9 * u.state.cycles) / (0.9 * k + 0.9);
+      },
+      allyAttack(sim, u, a, t) {
+        if (!a.cfg || a.cfg.char.id !== '1015' || t !== 'Skill' || u.state.joint) return;
+        a.state.rinCasts = (a.state.rinCasts || 0) + 1;
+        if (sim.sp > 3 && a.state.rinCasts < 5) return;
+        u.state.joint = true; a.state.rinCasts = 0;
+        const ev = sim.record(u, 'FollowUp', { label: 'Freeform Tohsaka Style (Joint)' });
+        const k = n(sim);
+        ev.dmg = std(sim, u, { atk: 3 * k }, 'FUA');
+        sim.addDamage(u, ev.dmg, 'Joint Follow-up');
+        sim.addDamage(a, std(sim, a, { atk: 3 * k }, 'FUA'), 'Joint Follow-up');
+        sim.gainSP(4, u);
+        sim.snap(ev, u);
+      },
+      turnEnd(sim, u) { u.state.joint = false; },
+    },
+    // ------------------------------------------------------------------ 1509 Gilgamesh
+    1509: {
+      desc: 'Interest also from his Ultimate (+2), teammates\' Ultimates (+2) and the Joint follow-up (+3) (E2: +5 at battle start and per Ultimate). Hero\'s Hauteur: +25% CRIT DMG per Interest gained (max 6). King\'s Burden: a teammate\'s Ultimate gives him +40% Ultimate DMG for 3 turns. Gate of Babylon: King\'s Acknowledgement ignores 30% DEF for 3 turns (E1: for all allies, and +60% ATK for him). Hegemon\'s Strife: allies with more than 140 Max Energy get +1% ATK and CRIT DMG per extra point (max 100%). With Saber: every 8 attacks by them, a Joint follow-up: 400% of his ATK (Lightning) and 600% of hers (Wind) to all enemies; Saber +120 fixed Energy and her next Ultimate ×2. E2: Skill +100% / +50% multiplier. E6: Ultimate bounces +80%; allies +20% RES PEN; Golden Rule: +100% Ultimate CRIT DMG per teammate Ultimate since his last (max 3).',
+      battleStart(sim, u) {
+        u.state.tally = 0; u.state.gainedI = 0; u.state.golden = 0;
+        sim.allies(u).concat([u]).forEach((a) => { const x = Math.min(1, Math.max(0, (a.maxEnergy || 0) - 140) * 0.01); if (x) sim.addBuff(a, { id: 'hegemonX', stats: { atkPct: x, cd: x }, turns: Infinity }); });
+        if (E(u) >= 6) team(sim, 'gilE6', { resPen: 0.2 }, Infinity);
+        if (E(u) >= 2) this.interest(sim, u, 5);
+      },
+      interest(sim, u, k) {
+        u.state.interest = (u.state.interest || 0) + k;
+        u.state.gainedI += k;
+        if (u.state.interest >= 10) u.state.piqued = true;
+        sim.addBuff(u, { id: 'interest', pct: 0.1 * u.state.interest, turns: Infinity });
+        self(sim, u, 'hauteur', { cd: 0.25 * Math.min(6, u.state.gainedI) }, Infinity);
+      },
+      action(sim, u, t) {
+        if (t === 'Skill') { self(sim, u, 'acknowledgement', { defIgnore: 0.3, ...(E(u) >= 1 ? { atkPct: 0.6 } : {}) }, 3); if (E(u) >= 1) sim.allies(u).forEach((a) => sim.addBuff(a, { id: 'acknowledgementTeam', stats: { defIgnore: 0.3 }, turns: 3 })); }
+      },
+      ult(sim, u) {
+        this.interest(sim, u, 2 + (E(u) >= 2 ? 5 : 0));
+        if (E(u) >= 6 && u.state.golden) { self(sim, u, 'goldenRule', { cd_Ult: u.state.golden }, Infinity); u.state.golden = 0; }
+      },
+      allyUlt(sim, u, a) {
+        if (a.kind !== 'char') return;
+        this.interest(sim, u, 2);
+        self(sim, u, 'kingsBurden', { dmg_Ult: 0.4 }, 3);
+        if (E(u) >= 6) u.state.golden = Math.min(3, u.state.golden + 1);
+      },
+      dmgScale(sim, u, act) {
+        if (act === 'Skill' && E(u) >= 2) { const k = n(sim), adj = Math.min(2, k - 1), P = window.AVEffects.P, a = P(u, 'BPSkill', 0), b = P(u, 'BPSkill', 1); return ((a + 1) + (b + 0.5) * adj) / (a + b * adj); }
+        if (act === 'Ult' && E(u) >= 6) { const k = n(sim), P = window.AVEffects.P, a = P(u, 'Ultra', 0), b = P(u, 'Ultra', 1); return (a * k + (b + 0.8) * 10) / (a * k + b * 10); }
+        return 1;
+      },
+      saberAttack(sim, u) {
+        const saber = sim.chars().find((a) => a.cfg.char.id === '1014');
+        if (!saber || ++u.state.tally < 8) return;
+        u.state.tally = 0;
+        const ev = sim.record(u, 'FollowUp', { label: 'Joint follow-up (Saber)' });
+        const k = n(sim);
+        ev.dmg = std(sim, u, { atk: 4 * k }, 'FUA');
+        sim.addDamage(u, ev.dmg, 'Joint Follow-up');
+        sim.addDamage(saber, std(sim, saber, { atk: 6 * k }, 'FUA'), 'Joint Follow-up');
+        this.interest(sim, u, 3);
+        F(sim, saber, 120);
+        saber.state.gilDouble = true;
+        sim.snap(ev, u);
+      },
+      afterDamage(sim, u, act) { if (isAtk(act)) this.saberAttack(sim, u); if (act === 'Skill') { u.state.interest = 0; } },
+      allyAttack(sim, u, a) { if (a.cfg && a.cfg.char.id === '1014') this.saberAttack(sim, u); },
     },
   };
 
