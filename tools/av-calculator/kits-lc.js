@@ -417,6 +417,128 @@
         emod(sim, 'unarmored', { vuln: L(u, 2) + (cornered ? L(u, 5) : 0) }, L(u, 3));
       },
     },
+
+    23035: { desc: 'Any Weakness Break: Charring, +Break DMG taken for 2 turns (2 stacks).', weaknessBreak(sim, u) { u.state.lc23035 = Math.min(L(u, 4), (u.state.lc23035 || 0) + 1); emod(sim, 'charring', { vulnType: { Break: L(u, 2) * u.state.lc23035 } }, L(u, 3)); } },
+    23043: { desc: 'After attacking: Bamboozle (−DEF, 2 turns) on all enemies; at 170 SPD also Theft (−DEF more).', afterDamage(sim, u, act) { if (isAtk(act)) emod(sim, 'bamboozle', { def: L(u, 2) + (sim.spd(u) >= L(u, 6) ? L(u, 5) : 0) }, L(u, 3)); } },
+    23047: {
+      desc: 'Her debuffs (Skill / Ultimate): Enthrallment for 3 turns: +DoT taken per debuff she applied (6); allies attacking it get +SPD for 3 turns.',
+      enthrall(sim, u) { u.state.lc23047 = Math.min(L(u, 4), (u.state.lc23047 || 0) + 1); emod(sim, 'enthrallment', { vulnType: { DoT: L(u, 3) * u.state.lc23047 } }, L(u, 2)); },
+      action(sim, u, t) { if (t === 'Skill') this.enthrall(sim, u); },
+      ult(sim, u) { this.enthrall(sim, u); },
+      allyAttack(sim, u, a) { if (a.kind === 'char' && (sim.enemyMods || []).some((m) => m.id === 'enthrallment')) sim.addBuff(a, { id: 'lc23047spd', pct: L(u, 5), turns: L(u, 6) }); },
+      afterDamage(sim, u, act) { if (isAtk(act) && (sim.enemyMods || []).some((m) => m.id === 'enthrallment')) sim.addBuff(u, { id: 'lc23047spd', pct: L(u, 5), turns: L(u, 6) }); },
+    },
+    23050: {
+      desc: 'Battle start: she and the teammate with the highest Break Effect +Break DMG. Implanting a Weakness (implanters only) recovers 1 SP, once per Ultimate.',
+      battleStart(sim, u) {
+        const mate = sim.allies(u).sort((a, b) => ((b.stats0 && b.stats0.be) || 0) - ((a.stats0 && a.stats0.be) || 0))[0];
+        [u, mate].filter(Boolean).forEach((a) => sim.addBuff(a, { id: 'lc23050', stats: { breakDmg: L(u, 1) }, turns: Infinity }));
+        u.state.lc23050 = ['1405', '1321', '1006', '1315', '1506'].includes(u.cfg.char.id);
+      },
+      action(sim, u, t) { if (u.state.lc23050 && (t === 'Skill' || t === 'Ult')) { u.state.lc23050 = false; sim.gainSP(1, u); } },
+      ult(sim, u) { u.state.lc23050 = ['1405', '1321', '1006', '1315', '1506'].includes(u.cfg.char.id); },
+    },
+    23059: {
+      desc: 'First turn: +20 fixed Energy. Skill attacks: Purgatory for 2 turns: allies +CRIT DMG against it, her more.',
+      turnStart(sim, u) { if (!u.state.lc23059) { u.state.lc23059 = true; F(sim, u, L(u, 1)); } },
+      afterDamage(sim, u, act) { if (act === 'Skill') { team(sim, 'purgatory', { cd: L(u, 3) }, L(u, 2)); self(sim, u, 'purgatorySelf', { cd: L(u, 4) }, L(u, 2)); } },
+    },
+    24003: { desc: 'Ultimate: +DoT DMG for 2 turns.', ult(sim, u) { self(sim, u, 'lc24003', { dotDmg: L(u, 1) }, L(u, 2)); } },
+    // ================================================================ Preservation
+    20003: { desc: '+DEF below 50% HP (half).', battleStart(sim, u) { self(sim, u, 'lc20003', { defPct: L(u, 2) * HALF }, Infinity); } },
+    20010: { desc: 'Self-healing only (not simulated).' },
+    20017: { desc: 'Self-healing only (not simulated).' },
+    21002: { desc: 'All-Type RES for allies (not simulated).' },
+    21009: { desc: 'Higher aggro (damage reduction isn\'t simulated).', tauntMult(sim, u) { return 1 + L(u, 0); } },
+    21016: { desc: 'When hit: Burns the attacker (DEF-based DoT, 2 turns).', hit(sim, u) { sim.addDot({ id: `${u.key}:lc21016`, src: u, mult: { def: L(u, 2) }, turns: L(u, 3) }); } },
+    21023: { desc: 'Damage reduction and healing only (not simulated).' },
+    21030: { desc: 'Ultimate: +60% DEF as DMG per enemy hit.', extraDamage(sim, u, act) { return act === 'Ult' ? std(sim, u, { def: L(u, 1) * sim.targetsHit(u, 'Ult') }, 'Ult') : 0; } },
+    21039: { desc: '+DMG per 100 DEF (max 32%).', battleStart(sim, u) { self(sim, u, 'lc21039', { dmg: Math.min(L(u, 3), L(u, 2) * Math.floor(st(sim, u).DEF / L(u, 1))) }, Infinity); } },
+    21043: { desc: '+DMG per shielded character (all, with a shielder on the team).', battleStart(sim, u) { if (healerOnTeam(sim)) self(sim, u, 'lc21043', { dmg: L(u, 1) * sim.chars().length }, Infinity); } },
+    21053: { desc: 'Shielded allies +DMG (her shields assumed up).', battleStart(sim, u) { team(sim, 'lc21053', { dmg: L(u, 1) }, Infinity); } },
+    23005: { desc: 'Higher aggro. When hit: +DEF until the end of her turn.', tauntMult(sim, u) { return 1 + L(u, 0); }, hit(sim, u) { self(sim, u, 'lc23005', { defPct: L(u, 3) }, 1); } },
+    23011: { desc: 'When her HP drops (hit): all allies +DMG for 2 turns.', hit(sim, u) { team(sim, 'lc23011', { dmg: L(u, 1) }, 2); } },
+    23023: {
+      desc: 'Shielding allies (Skill / Ultimate): +CRIT DMG for 2 turns. Her follow-ups: enemies take +DMG for 2 turns.',
+      action(sim, u, t) { if (t === 'Skill') self(sim, u, 'lc23023', { cd: L(u, 1) }, L(u, 2)); },
+      ult(sim, u) { self(sim, u, 'lc23023', { cd: L(u, 1) }, L(u, 2)); },
+      followUpDone(sim, u) { emod(sim, 'lc23023', { vuln: L(u, 4) }, L(u, 5)); },
+    },
+    23051: { desc: 'Ultimate: Redoubt for 3 turns: all allies +DMG (more with a summon).', ult(sim, u) { sim.chars().forEach((a) => sim.addBuff(a, { id: 'redoubt', stats: { dmg: L(u, 1) + (sim.units.some((x) => x.alive && x.owner === a && x.kind === 'summon') ? L(u, 2) : 0) }, turns: L(u, 3) })); } },
+    24002: { desc: 'Shields and damage reduction only (not simulated).' },
+    // ================================================================ Remembrance
+    20021: { desc: 'First memosprite summon: +1 SP and +Energy.', memoSummoned(sim, u) { if (!u.state.lc20021) { u.state.lc20021 = true; sim.gainSP(L(u, 0), u); G(sim, u, L(u, 1)); } } },
+    20022: {
+      desc: 'Each memosprite turn: Commemoration, +DMG for her and the memosprite (4 stacks); cleared when it leaves.',
+      allyAction(sim, u, a) { if (a.owner === u && a.memo) self(sim, u, 'commemoration', { dmg: L(u, 0) }, Infinity, { maxStacks: L(u, 1) }); },
+      memoGone(sim, u) { sim.removeBuff(u, 'commemoration'); },
+    },
+    21050: { desc: 'Her memosprite\'s ally-targeted abilities (Mem\'s Support, Demiurge\'s Ode): all allies +DMG for 3 turns.', allyAction(sim, u, a) { if (a.owner === u && a.memo && ['8008', '1415'].includes(u.cfg.char.id)) team(sim, 'lc21050', { dmg: L(u, 1) }, L(u, 2)); } },
+    21051: { desc: 'Ultimate: she and her memosprite +Basic ATK DMG for 3 turns.', ult(sim, u) { self(sim, u, 'lc21051', { dmg_Basic: L(u, 1) }, L(u, 2)); } },
+    21052: { desc: '+DMG while her memosprite is out.', battleStart(sim, u) { self(sim, u, 'lc21052', { dmg: (s, a) => (s.units.some((x) => x.alive && x.owner === a && x.memo) ? L(u, 1) : 0) }, Infinity); } },
+    21054: { desc: 'Outgoing Healing only (not simulated).' },
+    21057: { desc: 'Memosprite +CRIT DMG.', battleStart(sim, u) { self(sim, u, 'lc21057', { cd_Memo: L(u, 1) }, Infinity); } },
+    22006: {
+      desc: 'On Trailblazer (Remembrance): all allies +DMG, and "Together, We Script Tomorrow!" +60% DMG.',
+      battleStart(sim, u) { if (u.cfg.char.id === '8008') team(sim, 'lc22006', { dmg: L(u, 1) }, Infinity); },
+      dmgScale(sim, u, act) { return u.cfg.char.id === '8008' && act === 'Enhanced' ? 1 + L(u, 2) / (1 + st(sim, u).dmg) : 1; },
+    },
+    23036: {
+      desc: 'Her and her memosprite\'s attacks: Brocade, +CRIT DMG (6 stacks); at 6 also +Basic ATK DMG.',
+      stack(sim, u) { const b = self(sim, u, 'brocade', { cd: L(u, 2) }, Infinity, { maxStacks: L(u, 1) }); if (b && b.stacks >= L(u, 1)) self(sim, u, 'brocadeMax', { dmg_Basic: L(u, 3) * L(u, 1) }, Infinity); },
+      afterDamage(sim, u, act) { if (isAtk(act)) this.stack(sim, u); },
+      allyAttack(sim, u, a) { if (a.owner === u && a.memo) this.stack(sim, u); },
+    },
+    23040: {
+      desc: 'Losing HP on her own turn (HP-spending characters): Death Flower, she and her memosprite ignore DEF for 2 turns. Her memosprite leaving: advance 12% (once per Ultimate).',
+      battleStart(sim, u) { u.state.lc23040 = true; },
+      action(sim, u, t) { if (HP_USERS.has(u.cfg.char.id) && (t === 'Skill' || t === 'Enhanced' || t === 'Basic')) self(sim, u, 'deathFlower', { defIgnore: L(u, 1) }, L(u, 2)); },
+      memoGone(sim, u) { if (u.state.lc23040) { u.state.lc23040 = false; sim.advance(u, L(u, 3)); } },
+      ult(sim, u) { u.state.lc23040 = true; },
+    },
+    23042: {
+      desc: 'Basic ATK / Skill / Ultimate: every ally loses 1% of current HP; her memosprite\'s next attack adds 250% of the total as Additional DMG. Memosprite Skill: enemies take +DMG for 2 turns.',
+      take(sim, u) { u.state.lc23042 = (u.state.lc23042 || 0) + sim.chars().reduce((a, c) => a + L(u, 1) * (c.stats0 ? st(sim, c).HP : 0), 0); },
+      action(sim, u, t) { if (['Basic', 'Skill', 'Enhanced'].includes(t)) this.take(sim, u); },
+      ult(sim, u) { this.take(sim, u); },
+      allyAction(sim, u, a) {
+        if (a.owner !== u || !a.memo) return;
+        emod(sim, 'lc23042', { vuln: L(u, 3) }, L(u, 4));
+        if (u.state.lc23042) { sim.addDamage(u, L(u, 5) * u.state.lc23042, 'Additional (LC)'); u.state.lc23042 = 0; }
+      },
+    },
+    23049: {
+      desc: 'She and her memosprite +DMG. Memosprite abilities: Noctis, all memosprites ignore DEF. Memosprite leaving: +8 Energy.',
+      battleStart(sim, u) { self(sim, u, 'lc23049', { dmg: L(u, 2) }, Infinity); },
+      allyAction(sim, u, a) { if (a.owner === u && a.memo) team(sim, 'noctis', { defIgnore_Memo: L(u, 1) }, Infinity); },
+      memoGone(sim, u) { G(sim, u, L(u, 3)); },
+    },
+    23052: {
+      desc: 'Memosprite Skill on an enemy: Verse (all allies +CRIT DMG); on an ally (Mem / Demiurge): Blank (enemies +DMG taken); both: ×1.6.',
+      allyAction(sim, u, a) {
+        if (a.owner !== u || !a.memo) return;
+        u.state.verse = true;
+        if (['8008', '1415'].includes(u.cfg.char.id)) u.state.blank = true;
+        const k = u.state.verse && u.state.blank ? 1 + L(u, 3) : 1;
+        team(sim, 'verse', { cd: L(u, 1) * k }, Infinity);
+        if (u.state.blank) emod(sim, 'blank', { vuln: L(u, 2) * k }, Infinity);
+      },
+    },
+    23063: { desc: 'Ultimate: +1 SP for allies.', ult(sim, u) { sim.gainSP(1, u); } },
+    24005: { desc: 'Skill: all allies +DMG for 3 turns.', action(sim, u, t) { if (t === 'Skill') team(sim, 'lc24005', { dmg: L(u, 1) }, L(u, 2)); } },
+    // ================================================================ The Hunt
+    20000: { desc: 'Battle start: +CRIT Rate for 3 turns.', battleStart(sim, u) { self(sim, u, 'lc20000', { cr: L(u, 0) }, L(u, 1)); } },
+    20007: { desc: 'On-kill ATK (kills aren\'t simulated).' },
+    20014: { desc: 'On-kill SPD (kills aren\'t simulated).' },
+    21003: { desc: '+CRIT Rate with 2 or fewer enemies.', battleStart(sim, u) { if ((sim.enemyCount || 1) <= 2) self(sim, u, 'lc21003', { cr: L(u, 1) }, Infinity); } },
+    21010: { desc: 'Each hit on the same target: +DMG (5 stacks).', afterDamage(sim, u, act) { if (isAtk(act)) self(sim, u, 'lc21010', { dmg: L(u, 0) }, Infinity, { maxStacks: L(u, 1) }); } },
+    21017: { desc: 'Basic ATK and Skill +DMG, more at full Energy.', battleStart(sim, u) { self(sim, u, 'lc21017', { dmg_Basic: (s, a) => L(u, 0) + (s.energyFull(a) ? L(u, 1) : 0), dmg_Skill: (s, a) => L(u, 0) + (s.energyFull(a) ? L(u, 1) : 0) }, Infinity); } },
+    21024: {
+      desc: '+DMG until she is hit; back after the end of her next turn.',
+      battleStart(sim, u) { self(sim, u, 'lc21024', { dmg: (s, a) => (a.state.lc21024off ? 0 : L(u, 1)) }, Infinity); },
+      hit(sim, u) { u.state.lc21024off = 2; },
+      turnEnd(sim, u) { if (u.state.lc21024off && --u.state.lc21024off <= 0) u.state.lc21024off = 0; },
+    },
   };
 
   window.AVLightConeKits = lc;
