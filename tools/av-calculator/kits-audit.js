@@ -2152,6 +2152,123 @@
         return std(sim, u, { hp: 0.6 * bounces }, 'Memo') * e4;
       },
     },
+
+    // ------------------------------------------------------------------ 1501 Sparxie
+    1501: {
+      desc: 'Bloom! gets +20% / +10% multiplier (target / adjacent) per Engagement Farming, and with Certified Banger 20% Elation DMG per Farming. Ultimate: (60% of Elation + 50%) ATK to all enemies. Elation Skill: 50% to all + 20 bounces of 25% (E6: +1 per Punchline, max 40). Sweet!: +5% Elation per 100 ATK above 2000 (max 80%). E1: allies +1.5% RES PEN per Punchline (max 15%). E2: +10% CRIT DMG per Thrill spent for 2 turns (4 stacks). E4: Ultimate +36% Elation for 3 turns. E6: +20% RES PEN.',
+      battleStart(sim, u) {
+        const atk = st(sim, u).ATK;
+        self(sim, u, 'sweet', { elation: Math.min(0.8, 0.05 * Math.floor(Math.max(0, atk - 2000) / 100)) }, Infinity);
+        if (E(u) >= 1) team(sim, 'sparxieE1', { resPen: (s) => Math.min(0.15, 0.015 * s.punchline) }, Infinity);
+        if (E(u) >= 6) self(sim, u, 'sparxieE6', { resPen: 0.2 }, Infinity);
+      },
+      farms(u) { const v = u.cfg.opts && u.cfg.opts.farm; return +(v === undefined || v === '' ? 2 : v) || 1; },
+      action(sim, u, t) { if (E(u) >= 2 && t === 'Enhanced') { const k = Math.min(4, this.farms(u)); for (let i = 0; i < k; i++) self(sim, u, 'sparxieE2', { cd: 0.1 }, 2, { maxStacks: 4 }); } },
+      ult(sim, u) { if (E(u) >= 4) self(sim, u, 'sparxieE4', { elation: 0.36 }, 3); },
+      dmgScale(sim, u, act) {
+        if (act === 'Enhanced') { const f = this.farms(u), k = n(sim), adj = Math.min(2, k - 1); return (1 + 0.2 * f + (0.5 + 0.1 * f) * adj) / (1 + 0.5 * adj); }
+        if (act === 'Elation' && E(u) >= 6) return (0.5 * n(sim) + 0.25 * Math.min(40, 20 + sim.punchline)) / (0.5 * n(sim) + 0.25 * 20);
+        return 1;
+      },
+      extraDamage(sim, u, act) {
+        if (act === 'Ult') return std(sim, u, { atk: (0.6 * (st(sim, u).elation || 0) + 0.5) * n(sim) }, 'Ult');
+        if (act === 'Enhanced' && sim.cbTotal(u) > 0) return AD().elation(sim, u, 0.2 * this.farms(u), sim.cbTotal(u));
+        return 0;
+      },
+    },
+    // ------------------------------------------------------------------ 1502 Yao Guang
+    1502: {
+      desc: 'Zone (Skill / Technique, 3 of her turns): allies +20% of her Elation as Elation (E2: +16% more). Amaze-In Grace: at 120+ SPD, +30% Elation and +1% per SPD above 120 (max 200). Poised and Sated: +60% CRIT DMG. E1: allies\' Elation DMG ignores 20% DEF. E4: in the Aha extra turn from her Ultimate, Elation Skills deal 150%. E6: allies\' Elation DMG merrymakes 25%; her Elation Skill multiplier doubled.',
+      battleStart(sim, u) {
+        const sp = sim.spd(u);
+        self(sim, u, 'amaze', { elation: sp >= 120 ? 0.3 + 0.01 * Math.min(200, sp - 120) : 0, cd: 0.6 }, Infinity);
+        if (E(u) >= 1) team(sim, 'yaoE1', { defIgnore_Elation: 0.2 }, Infinity);
+        if (E(u) >= 6) team(sim, 'yaoE6', { merrymake: 0.25 }, Infinity);
+        team(sim, 'yaoZone', { elation: (s, a) => {
+          const yao = s.chars().find((c) => c.cfg.char.id === '1502');
+          if (!yao || !(yao.state.zone > 0)) return 0;
+          const own = a === yao ? 0 : 0.2 * (((yao.stats0 && yao.stats0.elation) || 0) + 0.3 + 0.01 * Math.min(200, Math.max(0, s.spd(yao) - 120)));
+          return own + (E(yao) >= 2 ? 0.16 : 0);
+        } }, Infinity);
+      },
+      ult(sim, u) { if (E(u) >= 4) u.state.e4 = true; },
+      allyElation(sim, u, a) {},
+      dmgScale(sim, u, act) { return act === 'Elation' && E(u) >= 6 ? 2 : 1; },
+    },
+    // ------------------------------------------------------------------ 1503 Pearl
+    1503: {
+      desc: 'Enhanced Basic ATK: Imagenate the Starry Night if the Aesthetic Archetype is Elation, else Render the Great Wave; after it, 60% Ice Elation DMG with the Archetype\'s stats (E6: +240%). Elation Skill: every ally\'s next attack adds 10/15/20/40% Elation DMG for 1/2/3/4+ Elation characters (E4: doubled). Panoptic Vision: +32% Elation at 2400 DEF, +3% per 100 DEF above (max 3600). E1: allies +10/20/60% Elation with 2/3/4+ Elation characters. E2: allies\' Elation DMG merrymakes 15%. E6: +20% RES PEN while Deep Learning lasts.',
+      battleStart(sim, u) {
+        const def = st(sim, u).DEF;
+        if (def >= 2400) self(sim, u, 'panoptic', { elation: 0.32 + 0.03 * Math.floor(Math.min(3600, def - 2400) / 100) }, Infinity);
+        const el = sim.chars().filter((a) => a.cfg.char.path === 'Elation').length;
+        if (E(u) >= 1) team(sim, 'pearlE1', { elation: el >= 4 ? 0.6 : el === 3 ? 0.2 : el === 2 ? 0.1 : 0 }, Infinity);
+        if (E(u) >= 2) team(sim, 'pearlE2', { merrymake: 0.15 }, Infinity);
+        if (E(u) >= 6) team(sim, 'pearlE6', { resPen: (s, a) => { const p = s.chars().find((c) => c.cfg.char.id === '1503'); return p && p.state.deep > 0 ? 0.2 : 0; } }, Infinity);
+        u.state.dissolve = new Set();
+      },
+      arch(sim, u) { return sim.targetOf(u); },
+      dmgAbility(sim, u, act) {
+        if (act !== 'Enhanced') return undefined;
+        const a = this.arch(sim, u);
+        return a && a.cfg.char.path === 'Elation' ? 'Brushstroke: Imagenate the Starry Night' : 'Brushstroke: Render the Great Wave';
+      },
+      afterDamage(sim, u, act) {
+        if (act === 'Enhanced') {
+          const a = this.arch(sim, u) || u;
+          sim.addDamage(u, AD().elation(sim, a, 0.6 + (E(u) >= 6 ? 2.4 : 0), sim.punchline), 'Deep Learning');
+        }
+        if (isAtk(act)) this.dissolve(sim, u, u);
+      },
+      elation(sim, u) {
+        const el = sim.chars().filter((a) => a.cfg.char.path === 'Elation').length;
+        u.state.dissolveMult = [0, 0.1, 0.15, 0.2, 0.4][Math.min(4, el)] * (E(u) >= 4 ? 2 : 1);
+        u.state.dissolve = new Set(sim.chars());
+      },
+      dissolve(sim, u, a) {
+        if (!u.state.dissolve || !u.state.dissolve.has(a)) return;
+        u.state.dissolve.delete(a);
+        sim.addDamage(a, AD().elation(sim, a, u.state.dissolveMult, sim.punchline), 'Dissolve Reason');
+      },
+      allyAttack(sim, u, a, t) { if (a.kind === 'char' && t !== 'Elation') this.dissolve(sim, u, a); },
+    },
+    // ------------------------------------------------------------------ 1504 Ashveil
+    1504: {
+      desc: 'Bait (always one, from battle start): all enemies −40% DEF (E6: −20% All-Type RES). Gluttony: +2 per Talent follow-up, +1 per Skill, +2 per Ultimate (max 12; E2: 18). Phantom Limb: follow-ups +80% DMG, +10% per Gluttony. Ultimate: the enhanced follow-up spends 4 Gluttony for an extra 200% hit (E2: refunds 35%). First Fang: allies\' follow-ups +80% CRIT DMG. E1: enemies take +24% DMG (36% at ≤50% HP; averaged). E4: Ultimate +40% ATK for 3 turns. E6: +4% DMG per Gluttony gained (30 stacks).',
+      battleStart(sim, u) {
+        u.state.glut = 0; u.state.gained = 0; u.state.bait = true; // a Bait is picked as soon as there's none
+        emod(sim, 'bait', { def: 0.4, ...(E(u) >= 6 ? { res: 0.2 } : {}) }, Infinity);
+        team(sim, 'firstFang', { cd_FUA: 0.8 }, Infinity);
+        self(sim, u, 'phantom', { dmg_FUA: (s, a) => 0.8 + 0.1 * a.state.glut, dmg: (s, a) => (E(a) >= 6 ? 0.04 * Math.min(30, a.state.gained) : 0) }, Infinity);
+        if (E(u) >= 1) emod(sim, 'ashveilE1', { vuln: 0.3 }, Infinity);
+      },
+      glut(sim, u, k) { u.state.glut = Math.min(E(u) >= 2 ? 18 : 12, u.state.glut + k); u.state.gained += k; },
+      action(sim, u, t) { if (t === 'Skill') this.glut(sim, u, 1); },
+      ult(sim, u) { this.glut(sim, u, 2); if (E(u) >= 4) self(sim, u, 'ashveilE4', { atkPct: 0.4 }, 3); },
+      followUpDone(sim, u, label) {
+        if (label === 'Enhanced Follow-up' && u.state.glut >= 4) {
+          u.state.glut -= 4;
+          sim.addDamage(u, std(sim, u, { atk: 2 }, 'FUA'), 'Gluttony');
+          if (E(u) >= 2) u.state.glut += Math.round(4 * 0.35);
+        }
+        this.glut(sim, u, 2);
+      },
+    },
+    // ------------------------------------------------------------------ 1505 Evanescia
+    1505: {
+      desc: 'Talent: Elation equal to 20% of CRIT DMG. Watch All Revels: +30% CRIT Rate; Ultimate bounces +1 / 2 / 4 with 3+ / 2 / 1 enemies. Weigh All Truths: Master Fox makes enemies take +12% DMG for 3 turns. E1: +20% RES PEN. E2: +36% CRIT DMG. E4: ignores 15% DEF. E6: Elation DMG merrymakes 15% (+2% per 100 Certified Banger, max 1000).',
+      battleStart(sim, u) {
+        self(sim, u, 'halcyon', { elation: (s, a) => 0.2 * ((a.stats0 && a.stats0.cd) || 0) + (E(a) >= 2 ? 0.072 : 0), cr: 0.3, ...(E(u) >= 2 ? { cd: 0.36 } : {}), ...(E(u) >= 1 ? { resPen: 0.2 } : {}), ...(E(u) >= 4 ? { defIgnore: 0.15 } : {}) }, Infinity);
+        if (E(u) >= 6) self(sim, u, 'evanesciaE6', { merrymake: (s, a) => 0.15 + 0.02 * Math.floor(Math.min(1000, s.cbTotal(a)) / 100) }, Infinity);
+      },
+      followUpDone(sim, u, label) { if (label === 'Master Fox') emod(sim, 'weigh', { vuln: 0.12 }, 3); },
+      dmgScale(sim, u, act) {
+        if (act !== 'Ult') return 1;
+        const k = n(sim), extra = k >= 3 ? 1 : k === 2 ? 2 : 4;
+        const P = window.AVEffects.P, a = P(u, 'Ultra', 0), b = P(u, 'Ultra', 2);
+        return (a * k + b * (5 + extra)) / (a * k + b * 5);
+      },
+    },
   };
 
   window.AVAuditKits = kits;
