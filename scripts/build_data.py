@@ -194,7 +194,8 @@ DMG_OVERRIDES = {
     ("1308", "Slashed Dream Cries in Red"): [{"p": 5, "stat": "atk", "target": "main"}, {"p": 6, "stat": "atk", "target": "others"}],
     ("1309", "Vox Harmonique, Opus Cosmique"): [],                              # Concerto buffs / additional DMG
     ("1221", "Earthbind, Etherbreak"): [],                                      # the Counter it sets up deals the DMG
-    ("1503", "Appraise Soul's Ground"): [],                                     # Deep Learning buffs later attacks
+    ("1503", "Appraise Soul's Ground"): [],
+    ("1312", "G—Gonna Be Late!"): [{"p": 1, "stat": "atk", "target": "main"}],  # per hit; hit count in the kit                                     # Deep Learning buffs later attacks
 }
 
 

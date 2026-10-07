@@ -1257,6 +1257,132 @@
       },
       turnStart(sim, u) { if (u.state.cipher > 0) u.state.cipher -= 1; },
     },
+
+    // ------------------------------------------------------------------ 1307 Black Swan
+    1307: {
+      desc: 'Arcana stacks are tracked: +5 at a 65% base chance when she attacks, +1 at 65% per other DoT tick, Epiphany adds 50% more and stops the halving after each tick (max 50; E2: +30 at battle start; E6: max 80, teammates\' attacks add 1 at 65%, every application doubled). Arcana: 240% + 12% per stack, ignores 20% DEF. Candleflame: all allies +60% of her Effect Hit Rate as DMG (max 72%). Goblet: Basic ATK / Ultimate and battle start also apply the Skill DEF shred. E1: enemies −25% Wind / Physical / Fire / Lightning RES. E4: Epiphany +20% DMG taken.',
+      battleStart(sim, u) {
+        u.state.arc = 0;
+        this.add(sim, u, E(u) >= 2 ? 30 : 0, true);
+        if (sim.chance(u, 'arcStart', 0.65)) this.add(sim, u, 1);
+        const ehr = (u.stats0 && u.stats0.ehr) || 0;
+        team(sim, 'candleflame', { dmg: Math.min(0.72, 0.6 * ehr) }, Infinity);
+        emod(sim, 'bsDef', { def: 0.208 }, 3);
+        if (E(u) >= 1) emod(sim, 'bsE1', { resEl: { Wind: 0.25, Physical: 0.25, Fire: 0.25, Lightning: 0.25 } }, Infinity);
+      },
+      epiphany(sim) { return (sim.enemyMods || []).some((m) => m.id === 'epiphany'); },
+      add(sim, u, k, fixed) {
+        if (!k) return;
+        let v = k * (E(u) >= 6 && !fixed ? 2 : 1);
+        if (this.epiphany(sim) && !fixed) v *= 1.5;
+        u.state.arc = Math.min(E(u) >= 6 ? 80 : 50, u.state.arc + v);
+      },
+      afterDamage(sim, u, act) {
+        if (isAtk(act) && sim.chance(u, 'viscera', 0.65)) this.add(sim, u, 5);
+        if (act === 'Basic') emod(sim, 'bsDef', { def: 0.208 }, 3);
+      },
+      ult(sim, u) { emod(sim, 'bsDef', { def: 0.208 }, 3); if (E(u) >= 4) emod(sim, 'bsE4', { vuln: 0.2 }, 2); },
+      allyAttack(sim, u, a) { if (E(u) >= 6 && a.kind === 'char' && sim.chance(u, 'arcE6', 0.65)) this.add(sim, u, 1); },
+      enemyTurnStart(sim, u, e) {
+        if (e !== sim.enemies()[0]) return;
+        const others = (sim.dots || []).filter((d) => !d.id.endsWith(":Loom of Fate's Caprice")).length;
+        for (let i = 0; i < others; i++) if (sim.chance(u, 'arcDot', 0.65)) this.add(sim, u, 1);
+        if (!this.epiphany(sim)) u.state.arc = Math.floor(u.state.arc / 2);
+      },
+      dotScale(sim, u, d) {
+        if (!d || !d.id.endsWith(":Loom of Fate's Caprice")) return 1;
+        const P = window.AVEffects.P, base = P(u, 'Talent', 0), adj = P(u, 'Talent', 4);
+        const k = (sim.enemyLevel || 95) + 20, shred = (sim.enemyMods || []).reduce((a, m) => a + (m.def || 0), 0);
+        const ign = (k * Math.max(0, 1 - shred) + 100) / (k * Math.max(0, 1 - shred - 0.2) + 100);
+        return (base + 0.12 * u.state.arc + adj) / (base + adj) * ign;
+      },
+    },
+    // ------------------------------------------------------------------ 1308 Acheron
+    1308: {
+      desc: 'Ultimate: −20% All-Type RES for its duration; Thunder Core: Rainblade hits on Crimson Knot targets give +30% DMG per stack (3) for 3 turns, and Stygian Resurge adds 6 × 25% ATK random Ultimate DMG hits. E1: +18% CRIT Rate vs debuffed enemies. E2: The Abyss needs one fewer Nihility teammate. E4: enemies take +8% Ultimate DMG. E6: +20% Ultimate RES PEN; Basic ATK and Skill count as Ultimate DMG.',
+      battleStart(sim, u) {
+        if (E(u) >= 1) self(sim, u, 'acheronE1', { cr: (s) => (s.debuffCount() > 0 ? 0.18 : 0) }, Infinity);
+        if (E(u) >= 4) emod(sim, 'acheronE4', { vulnType: { Ult: 0.08 } }, Infinity);
+        if (E(u) >= 6) self(sim, u, 'acheronE6', { resPen_Ult: 0.2 }, Infinity);
+      },
+      ult(sim, u) {
+        emod(sim, 'acheronUlt', { res: 0.2 }, Infinity);
+        self(sim, u, 'thunderCore', { dmg: 0.3 }, 3, { maxStacks: 3 });
+        self(sim, u, 'thunderCore', { dmg: 0.3 }, 3, { maxStacks: 3 });
+        self(sim, u, 'thunderCore', { dmg: 0.3 }, 3, { maxStacks: 3 });
+      },
+      afterDamage(sim, u, act) { if (act === 'Ult') sim.enemyMods = (sim.enemyMods || []).filter((m) => m.id !== 'acheronUlt'); },
+      extraDamage(sim, u, act) { return act === 'Ult' ? std(sim, u, { atk: 6 * 0.25 }, 'Ult') : 0; },
+      dmgType(sim, u, act) { return E(u) >= 6 && (act === 'Basic' || act === 'Skill') ? 'Ult' : undefined; },
+      dmgScale(sim, u, act) {
+        if (E(u) < 2 || !['Basic', 'Skill', 'Ult'].includes(act)) return 1;
+        const k = sim.allies(u).filter((a) => a.cfg.char.path === 'Nihility').length;
+        return k === 1 ? 1.6 / 1.15 : k === 0 ? 1.15 : 1;
+      },
+    },
+    // ------------------------------------------------------------------ 1309 Robin
+    1309: {
+      desc: 'Concerto: Impromptu Flourish +25% follow-up CRIT DMG for all allies; E1: +24% All-Type RES PEN. E6: Concerto hits get +450% CRIT DMG for the first 8 per Ultimate.',
+      ult(sim, u) { team(sim, 'flourish', { cd_FUA: 0.25, ...(E(u) >= 1 ? { resPen: 0.24 } : {}) }, Infinity); },
+      turnStart(sim, u) { if (!u.state.concerto) sim.units.forEach((x) => sim.removeBuff(x, 'flourish')); },
+    },
+    // ------------------------------------------------------------------ 1310 Firefly
+    1310: {
+      desc: 'Complete Combustion: Enhanced Skill (Deathstar Overload: 200% + 20% of Break Effect, adjacent half; Break Effect counted up to 360%) when SP allows (E1: always, and it ignores 15% DEF), else Enhanced Basic ATK. Module α: breaking a Weakness with them delays the Combustion countdown 10% (3 times). Module γ: +0.8% Break Effect per 10 ATK above 1800. E2: a Break in Combustion gives an extra turn (once per turn). E6: +20% Fire RES PEN in Combustion.',
+      battleStart(sim, u) {
+        const atk = st(sim, u).ATK;
+        const be = 0.008 * Math.floor(Math.max(0, atk - 1800) / 10);
+        if (be) self(sim, u, 'moduleGamma', { be }, Infinity);
+      },
+      turnStart(sim, u) { u.state.e2Used = false; u.state.skill = u.state.combust && (E(u) >= 1 || sim.sp >= 1); },
+      spCost(sim, u, t) { return t === 'Enhanced' ? (u.state.skill ? (E(u) >= 1 ? 0 : 1) : -1) : undefined; },
+      dmgAbility(sim, u, act) { return act === 'Enhanced' && u.state.skill ? 'Fyrefly Type-IV: Deathstar Overload' : undefined; },
+      action(sim, u, t) {
+        if (t === 'Enhanced') { u.state.alpha = u.state.alpha || 0; if (E(u) >= 1 && u.state.skill) self(sim, u, 'fireflyE1', { defIgnore: 0.15 }, Infinity); }
+      },
+      ult(sim, u) { u.state.alpha = 0; if (E(u) >= 6) self(sim, u, 'fireflyE6', { resPen: 0.2 }, Infinity); },
+      afterDamage(sim, u) { sim.removeBuff(u, 'fireflyE1'); if (!u.state.combust) sim.removeBuff(u, 'fireflyE6'); },
+      weaknessBreak(sim, u, by) {
+        if (by !== u || !u.state.combust || sim.current !== u) return;
+        if (u.state.alpha < 3) { u.state.alpha += 1; const cd = sim.units.find((x) => x.key === `${u.key}:combust` && x.alive); if (cd) sim.delay(cd, 0.1); }
+        if (E(u) >= 2 && !u.state.e2Used) { u.state.e2Used = true; sim.extraTurn(u); }
+      },
+      extraDamage(sim, u, act) {
+        if (act !== 'Enhanced' || !u.state.skill) return 0;
+        const be = Math.min(3.6, st(sim, u).be || 0);
+        return std(sim, u, { atk: 2 + 0.2 * be + (1 + 0.1 * be) * Math.min(2, n(sim) - 1) }, 'Skill');
+      },
+    },
+    // ------------------------------------------------------------------ 1312 Misha
+    1312: {
+      desc: 'Ultimate: 3 hits of 60% (E4: 66%), +1 per Skill Point allies spend and per Skill, max 10 (E1: +1 per enemy, up to 5 more). Each hit has a 20% base chance to Freeze its target (first hit +80%; +60% Effect Hit Rate during the Ultimate); Freeze: 1 turn, 30% ATK. Transmission: +30% CRIT DMG vs Frozen enemies. E2: each hit has a 24% base chance of −16% DEF for 3 turns. E6: +30% DMG during the Ultimate; the next Skill recovers 1 SP.',
+      battleStart(sim, u) { u.state.hits = 3; },
+      spUsed(sim, u, by, k) { if (by && by.kind === 'char') u.state.hits = Math.min(10, u.state.hits + k); },
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        u.state.hits = Math.min(10, u.state.hits + 1);
+        if (u.state.e6) { u.state.e6 = false; sim.gainSP(1, u); }
+      },
+      ult(sim, u) {
+        u.state.ultHits = Math.min(10 + (E(u) >= 1 ? 5 : 0), u.state.hits + (E(u) >= 1 ? Math.min(5, n(sim)) : 0));
+        u.state.hits = 3;
+        self(sim, u, 'interlock', { ehr: 0.6, ...(E(u) >= 6 ? { dmg: 0.3 } : {}) }, Infinity);
+        const es = sim.enemies();
+        for (let i = 0; i < u.state.ultHits; i++) {
+          const e = es[i === 0 ? 0 : i % es.length];
+          if (e && !e.frozen && sim.chance(u, 'mishaFreeze', i === 0 ? 1 : 0.2)) sim.freezeEnemy(e, u, { atk: 0.3 });
+          if (E(u) >= 2 && sim.chance(u, 'mishaE2', 0.24)) emod(sim, 'mishaE2', { def: 0.16 }, 3);
+        }
+        if (E(u) >= 6) u.state.e6 = true;
+      },
+      afterDamage(sim, u, act) { if (act === 'Ult') sim.removeBuff(u, 'interlock'); },
+      dmgScale(sim, u, act) {
+        if (act !== 'Ult') return 1;
+        const s = st(sim, u), cr = Math.min(1, s.cr), es = sim.enemies();
+        const fz = es.length ? es.filter((e) => e.frozen).length / es.length : 0;
+        return (u.state.ultHits || 3) * (E(u) >= 4 ? 0.66 / 0.6 : 1) * (1 + fz * cr * 0.3 / (1 + cr * s.cd));
+      },
+    },
   };
 
   window.AVAuditKits = kits;

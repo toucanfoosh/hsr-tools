@@ -117,9 +117,10 @@
   }
   // Σ multiplier × targets, split by scaling stat.
   function multipliers(sim, u, ab) {
+    const out = { atk: 0, hp: 0, def: 0, elation: 0 };
+    if (!ab.hits || !ab.params) return out; // e.g. Firefly's Enhanced Skill: the kit adds its DMG
     const row = ab.params[abilityLevel(u, ab) - 1];
     const n = Math.max(1, sim.enemyCount || 1);
-    const out = { atk: 0, hp: 0, def: 0, elation: 0 };
     for (const h of ab.hits) {
       if (h.dot) continue;
       const m = row[h.p] || 0;
@@ -187,7 +188,8 @@
       applyToughness(sim, src, ab, u);
       const m = multipliers(sim, src, ab);
       const scale = sim.fireProduct(src, 'dmgScale', act, extra, u);
-      total += standard(sim, src, m, 0, typeOf(act, ab, u)) * scale;
+      // Kits can re-type damage (Acheron E6: Basic / Skill count as Ultimate DMG).
+      total += standard(sim, src, m, 0, sim.fire(src, 'dmgType', act, extra, u) || typeOf(act, ab, u)) * scale;
       if (m.elation) total += elation(sim, src, m.elation, extra.punchline != null ? extra.punchline : sim.punchline) * scale;
     }
     // Abilities with a DoT clause apply it to the enemies (ticks on enemy turns). Talent DoTs
@@ -195,7 +197,7 @@
     // A DoT lands on the enemies this attack hit.
     const hitCount = sim.dotTargets(ab);
     const applyDot = (a) => {
-      if (!a || !a.hits.some((h) => h.dot)) return;
+      if (!a || !a.hits || !a.hits.some((h) => h.dot)) return;
       const row = a.params[abilityLevel(src, a) - 1];
       const mult = { atk: 0, hp: 0, def: 0 };
       for (const h of a.hits) if (h.dot && h.stat in mult) mult[h.stat] += row[h.p] || 0;
@@ -280,13 +282,17 @@
         const flat = 0.228 * liveStats(sim, u).ATK + 200;
         team(sim, 'concerto', { atk: flat }, Infinity);
         u.state.concertoBuff = true;
+        u.state.e6Left = 8;
       },
       turnStart(sim, u) { if (u.state.concertoBuff && !u.state.concerto) { sim.units.forEach((x) => sim.removeBuff(x, 'concerto')); u.state.concertoBuff = false; } },
       // Concerto: Physical Additional DMG 120% ATK (fixed 100% CRIT, 150% CRIT DMG) after every ally attack.
       allyAttack(sim, u) {
         if (!u.state.concerto) return;
         const st = liveStats(sim, u);
-        const dmg = 1.2 * st.ATK * (1 + st.dmg) * (1 + 1.5) * common(sim, { ...st, cr: 0, cd: 0 });
+        // E6: +450% CRIT DMG on the first 8 per Ultimate.
+        const e6 = u.cfg.eidolon >= 6 && (u.state.e6Left || 0) > 0;
+        if (e6) u.state.e6Left -= 1;
+        const dmg = 1.2 * st.ATK * (1 + st.dmg) * (1 + 1.5 + (e6 ? 4.5 : 0)) * common(sim, { ...st, cr: 0, cd: 0 });
         sim.addDamage(u, dmg, 'Concerto');
       },
     },
@@ -347,8 +353,7 @@
       battleStart(sim, u) { sim.addEnemyMod({ id: 'cipher', vuln: 0.4, turns: Infinity }); },
     },
     1307: { // Black Swan: Skill DEF −20.8% 3 turns; Ult Epiphany +25% DMG taken 2 turns.
-      // Arcana: 240% + 12% per stack; assume ~15 stacks on average (not halved during Epiphany).
-      dotScale() { return (2.4 + 0.12 * 15) / 2.4; },
+      // Arcana stacks: see the audit kit.
       dotTurns() { return 3; },
       action(sim, u, t) { if (t === 'Skill' || t === 'Basic') sim.addEnemyMod({ id: 'bsDef', def: 0.208, turns: 3 }); },
       ult(sim, u) { sim.addEnemyMod({ id: 'epiphany', vuln: 0.25, turns: 2 }); },
