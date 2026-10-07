@@ -616,6 +616,18 @@
       }
 
       if (u.kind === 'enemy') {
+        // About to recover from Weakness Break: kits may extend it (Ruan Mei's Thanatoplum Rebloom
+        // sets `rebloom` to a delay), which pushes the enemy's turn back instead.
+        if (u.broken) {
+          this.fireEvery('breakRecover', u);
+          if (u.rebloom > 0) {
+            this.record(u, 'Break', { label: 'Break extended' });
+            this.current = null;
+            u.dist = GAUGE * u.rebloom; u.rebloom = 0; u.tb = u.defaultTb;
+            return;
+          }
+          u.rebloomed = false;
+        }
         this.tickBuffs(u, 'start');
         if (u.frozen) {
           // Frozen: the turn is skipped (Freeze DMG ticks), then the next action is advanced 50%.

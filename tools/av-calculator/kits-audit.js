@@ -1129,6 +1129,134 @@
         if (E(u) >= 2) G(sim, u, 3);
       },
     },
+
+    // ------------------------------------------------------------------ 1301 Gallagher
+    1301: {
+      desc: 'Ultimate: Besotted on all enemies for 2 turns (E4: 3), +12% Break DMG taken; his next Basic ATK becomes Nectar Blitz (250%, −15% enemy ATK). E6: +20% Break Effect and Weakness Break Efficiency.',
+      battleStart(sim, u) { if (E(u) >= 6) self(sim, u, 'gallagherE6', { be: 0.2, wbe: 0.2 }, Infinity); },
+      ult(sim, u) { u.state.nectar = true; emod(sim, 'besotted', { vulnType: { Break: 0.12 } }, E(u) >= 4 ? 3 : 2); },
+      actionType(sim, u) { return u.state.nectar ? 'Enhanced' : undefined; },
+      spCost(sim, u, t) { return t === 'Enhanced' ? -1 : undefined; },
+      action(sim, u, t) { if (t === 'Enhanced') u.state.nectar = false; },
+    },
+    // ------------------------------------------------------------------ 1302 Argenti
+    1302: {
+      desc: 'Ultimate: the 180-Energy version by default (option). Apotheosis: +2.5% CRIT Rate per stack (E1: +4% CRIT DMG too), +1 per enemy hit by Basic / Skill / Ultimate and +1 at turn start, max 10 (E4: 12, starts with 2). Courage: +15% DMG vs enemies ≤50% HP (half). E2: Ultimate with 3+ enemies: +40% ATK for 1 turn. E6: Ultimate ignores 30% DEF.',
+      options: [{ key: 'ult', label: 'Ultimate', type: 'select', def: '180', choices: [['180', '180 Energy (Merit Bestowed)'], ['90', '90 Energy (Supreme Beauty)']] }],
+      battleStart(sim, u) {
+        if (O(u, 'ult') !== '90') { u.maxEnergy = 180; u.energy += 45; }
+        u.state.apo = 0;
+        self(sim, u, 'courage', { dmg: 0.15 * HALF }, Infinity);
+        if (E(u) >= 6) self(sim, u, 'argentiE6', { defIgnore_Ult: 0.3 }, Infinity);
+        if (E(u) >= 4) this.apo(sim, u, 2);
+      },
+      apo(sim, u, k) {
+        u.state.apo = Math.min(E(u) >= 4 ? 12 : 10, u.state.apo + k);
+        sim.removeBuff(u, 'apotheosis');
+        self(sim, u, 'apotheosis', { cr: 0.025 * u.state.apo, ...(E(u) >= 1 ? { cd: 0.04 * u.state.apo } : {}) }, Infinity);
+      },
+      turnStart(sim, u) { this.apo(sim, u, 1); },
+      dmgAbility(sim, u, act) { return act === 'Ult' ? (O(u, 'ult') === '90' ? 'For In This Garden, Supreme Beauty Bestows' : 'Merit Bestowed in "My" Garden') : undefined; },
+      ult(sim, u) { if (E(u) >= 2 && n(sim) >= 3) self(sim, u, 'argentiE2', { atkPct: 0.4 }, 1); },
+      afterDamage(sim, u, act) { if (act === 'Basic' || act === 'Skill' || act === 'Ult') this.apo(sim, u, sim.targetsHit(u, act)); },
+    },
+    // ------------------------------------------------------------------ 1303 Ruan Mei
+    1303: {
+      desc: 'Talent: allies breaking a Weakness trigger 120% of her Ice Break DMG on that enemy (E6: 320%). Ultimate Zone (2 of her turns; E6: 3): enemies about to recover from Break get Thanatoplum Rebloom instead: their Break is extended and their action delayed by 20% of her Break Effect + 10%, plus 50% of her Ice Break DMG (once per Break). Candle Lights: Skill +6% DMG per 10% Break Effect above 120% (max 36%). E1: Zone ignores 20% DEF. E2: allies +40% ATK vs Broken enemies. E4: +100% Break Effect for 3 turns on any Break.',
+      battleStart(sim, u) {
+        u.state.zone = 0;
+        if (E(u) >= 2) team(sim, 'ruanMeiE2', { atkPct: (s) => 0.4 * s.brokenShare() }, Infinity);
+      },
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        const be = st(sim, u).be || 0;
+        const k = Math.min(0.36, 0.06 * Math.floor(Math.max(0, be - 1.2 + 1e-9) / 0.1));
+        if (k) team(sim, 'candleLights', { dmg: k }, 3, { tick: 'owner', owner: u });
+      },
+      ult(sim, u) {
+        u.state.zone = E(u) >= 6 ? 3 : 2;
+        if (E(u) >= 1) team(sim, 'ruanMeiE1', { defIgnore: 0.2 }, u.state.zone, { tick: 'owner', owner: u });
+      },
+      afterDamage(sim, u, act) { if (act === 'Ult' && E(u) >= 6) sim.chars().forEach((a) => a.buffs.filter((b) => b.id === 'rmZone').forEach((b) => { b.turns = 3; })); },
+      turnStart(sim, u) { if (u.state.zone > 0) u.state.zone -= 1; },
+      weaknessBreak(sim, u, by, e) {
+        if (by && by.kind === 'char') sim.addDamage(u, AD().breakDamage(sim, u) * (1.2 + (E(u) >= 6 ? 2 : 0)), 'Break (Ruan Mei)');
+        if (E(u) >= 4) self(sim, u, 'ruanMeiE4', { be: 1 }, 3);
+      },
+      breakRecover(sim, u, e) {
+        if (!(u.state.zone > 0) || e.rebloomed) return;
+        e.rebloomed = true;
+        e.rebloom = 0.2 * (st(sim, u).be || 0) + 0.1;
+        sim.addDamage(u, 0.5 * AD().breakDamage(sim, u), 'Thanatoplum Rebloom');
+      },
+    },
+    // ------------------------------------------------------------------ 1304 Aventurine
+    1304: {
+      desc: 'Leverage: +2% CRIT Rate per 100 DEF above 1600 (max 48%). E1: shielded allies +20% CRIT DMG (shields are kept up). E2: Basic ATK −12% All-Type RES for 3 turns. E4: before his follow-up, +40% DEF for 2 turns and 3 more hits. E6: +50% DMG per shielded teammate (max 150%).',
+      battleStart(sim, u) {
+        const def = st(sim, u).DEF;
+        const cr = Math.min(0.48, 0.02 * Math.floor(Math.max(0, def - 1600) / 100));
+        if (cr) self(sim, u, 'leverage', { cr }, Infinity);
+        if (E(u) >= 1) team(sim, 'aventurineE1', { cd: 0.2 }, Infinity);
+        if (E(u) >= 6) self(sim, u, 'aventurineE6', { dmg: Math.min(1.5, 0.5 * sim.allies(u).length) }, Infinity);
+      },
+      action(sim, u, t) { if (E(u) >= 2 && t === 'Basic') emod(sim, 'aventurineE2', { res: 0.12 }, 3); },
+      dmgScale(sim, u, act) {
+        if (act !== 'FollowUp' || E(u) < 4) return 1;
+        self(sim, u, 'aventurineE4', { defPct: 0.4 }, 2);
+        return 10 / 7;
+      },
+    },
+    // ------------------------------------------------------------------ 1305 Dr. Ratio
+    1305: {
+      desc: 'Uses the "Debuffs on his target" setting. Summation: Skill gives +2.5% CRIT Rate and +5% CRIT DMG per debuff for 1 turn (max 6; E1: max 10 and 4 more stacks). Deduction: with 3+ debuffs, +10% DMG per debuff (max 50%). E2: follow-ups add 20% ATK Additional DMG per debuff (max 4). E6: follow-ups +50% DMG.',
+      deb(u) { const v = u.cfg.opts && u.cfg.opts.debuffs; return v === undefined || v === '' ? 3 : +v; },
+      battleStart(sim, u) { const d = this.deb(u); if (d >= 3) self(sim, u, 'deduction', { dmg: Math.min(0.5, 0.1 * d) }, Infinity); },
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        const k = Math.min(E(u) >= 1 ? 10 : 6, this.deb(u) + (E(u) >= 1 ? 4 : 0));
+        if (k) self(sim, u, 'summation', { cr: 0.025 * k, cd: 0.05 * k }, 1);
+      },
+      dmgScale(sim, u, act) { return act === 'FollowUp' && E(u) >= 6 ? 1 + 0.5 / (1 + st(sim, u).dmg) : 1; },
+      extraDamage(sim, u, act) { return act === 'FollowUp' && E(u) >= 2 ? std(sim, u, { atk: 0.2 * Math.min(4, this.deb(u)) }) : 0; },
+    },
+    // ------------------------------------------------------------------ 1306 Sparkle
+    1306: {
+      desc: 'Ultimate: Cipher on all allies for 3 turns: each Figment stack adds 6% more vulnerability (E1: Cipher +40% ATK). Artificial Flower: if an ally spends 3+ SP in one turn, her next Skill is free. E1: +15% SPD for 2 turns at battle start and after Skill. E2: each Figment stack −10% DEF. E6: Skill CRIT DMG +30% of hers, and it spreads to all Cipher holders.',
+      battleStart(sim, u) { u.state.fig = 0; u.state.cipher = 0; if (E(u) >= 1) sim.addBuff(u, { id: 'sparkleE1', pct: 0.15, turns: 2 }); },
+      figment(sim, u) {
+        const f = u.state.fig;
+        emod(sim, 'figment', { vuln: (0.04 + (u.state.cipher > 0 ? 0.06 : 0)) * f, ...(E(u) >= 2 ? { def: 0.1 * f } : {}) }, 2);
+      },
+      spUsed(sim, u, by, k) {
+        u.state.fig = Math.min(3, u.state.fig + k);
+        this.figment(sim, u);
+        if (by && by.kind === 'char') {
+          if (u.state.spTurn !== sim.turnId) { u.state.spTurn = sim.turnId; u.state.spThisTurn = 0; }
+          u.state.spThisTurn += k;
+          if (u.state.spThisTurn >= 3) u.state.freeSkill = true;
+        }
+      },
+      spCost(sim, u, t) { return t === 'Skill' && u.state.freeSkill ? 0 : undefined; },
+      action(sim, u, t) {
+        if (t !== 'Skill') return;
+        if (u.state.freeSkill && u.state.spTurn !== sim.turnId) u.state.freeSkill = false;
+        if (E(u) >= 1) sim.addBuff(u, { id: 'sparkleE1', pct: 0.15, turns: 2 });
+      },
+      afterDamage(sim, u, act) {
+        if (act !== 'Skill' || E(u) < 6) return;
+        const tg = sim.targetOf(u), b = tg && tg.buffs.find((x) => x.id === 'sparkleCD');
+        if (!b) return;
+        b.stats = { ...b.stats, cd: b.stats.cd + 0.3 * st(sim, u).cd };
+        if (u.state.cipher > 0) sim.chars().forEach((a) => sim.addBuff(a, { id: 'sparkleCD', stats: b.stats, turns: 2 }));
+      },
+      ult(sim, u) {
+        u.state.cipher = 3;
+        if (E(u) >= 1) team(sim, 'cipherATK', { atkPct: 0.4 }, 3, { tick: 'owner', owner: u });
+        this.figment(sim, u);
+      },
+      turnStart(sim, u) { if (u.state.cipher > 0) u.state.cipher -= 1; },
+    },
   };
 
   window.AVAuditKits = kits;

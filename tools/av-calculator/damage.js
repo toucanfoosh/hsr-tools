@@ -313,7 +313,6 @@
     1306: { // Sparkle (Novaflare): Skill CD 24% of hers +45% (2 turns); +45% ATK trace; Figment vuln 4%/SP (3).
       battleStart(sim, u) { team(sim, 'sparkleATK', { atkPct: 0.45 }, Infinity); },
       action(sim, u, t) { if (t === 'Skill') { const tg = sim.targetOf(u); if (tg) sim.addBuff(tg, { id: 'sparkleCD', stats: { cd: 0.24 * liveStats(sim, u).cd + 0.45, resPen: 0.1 }, turns: 2 }); } },
-      spUsed(sim, u, by, n) { u.state.fig = Math.min(3, (u.state.fig || 0) + n); sim.addEnemyMod({ id: 'figment', vuln: 0.04 * u.state.fig, turns: 2 }); },
     },
     1303: { // Ruan Mei: Skill +32% DMG (3 turns); Ult zone +25% RES PEN (2 turns); +20% BE.
       battleStart(sim, u) { team(sim, 'rmBE', { be: 0.2 }, Infinity); },
