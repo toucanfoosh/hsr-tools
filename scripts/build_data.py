@@ -116,6 +116,44 @@ LEVEL_KEY = {"Basic": "Normal", "Skill": "BPSkill", "Ult": "Ultra", "Talent": "T
              "MemoSkill": "Memo", "MemoTalent": "Memo", "Assist": "BPSkill"}
 
 
+# Target phrases, checked by where they first appear ("to a random single enemy, and enemies
+# adjacent to it..." is a random hit). Ties go to the earlier entry (blast before main).
+_TARGETS = (
+    ("split", r"split evenly|distributed evenly"),
+    ("blast", r"one designated enemy(?: target)? and (?:its |their )?(?:enemies )?adjacent"),
+    ("adj", r"adjacent"),
+    ("others", r"other (?:enemy )?targets|other enemies"),
+    ("all", r"all enem"),
+    ("random", r"random"),
+    ("main", r"one (?:designated )?enemy|single (?:enemy|target)|designated enemy"),
+)
+
+
+def _first_target(text):
+    best = None
+    for kind, rx in _TARGETS:
+        m = re.search(rx, text)
+        if m and (best is None or m.start() < best[0]):
+            best = (m.start(), kind)
+    return best and best[1]
+
+
+def clause_target(lt, lp):
+    """Who a damage clause hits: the first target phrase after it, else the one in the same
+    sentence before it ("deals Wind DMG to adjacent targets equal to X%")."""
+    if "a total of" in lp[-40:] or "split evenly" in lp[-60:]:
+        return "split"
+    t = _first_target(lt)
+    if t:
+        return t
+    # The same sentence before the number; when it already holds another clause, only the part
+    # after the last "deal(s)" (the earlier target phrase belongs to that clause).
+    before = re.split(r"[.;\n]", lp)[-1]
+    if re.search(r"#\d+\[", before):
+        before = re.split(r"\bdeal(?:s|ing)?\b", before)[-1]
+    return _first_target(before) or "main"
+
+
 def parse_damage(desc):
     """Damage clauses of an ability description (placeholders still in place)."""
     d = re.sub(r"<[^>]+>", "", desc or "").replace("\\n", "\n")
@@ -129,24 +167,13 @@ def parse_damage(desc):
             lt, lp = tail.lower(), pre.lower()
             # Only damage: "... DMG equal to X%", "deals / dealing X% ... DMG". Buffs such as
             # "ATK by an amount equal to X% of Robin's ATK" are skipped.
+            if kind is None and re.search(r"(?:offset|absorb)s? dmg equal to\s*$", lp[-40:]):
+                continue
             if kind is None and not re.search(r"(?:dmg|dot) (?:equal to|to [^.]{0,40}equal to)(?: a total of)?(?: up to)?\s*\(?$|deal(?:s|ing)?\s+$|dmg equal to up to\s*$", lp[-60:]):
                 continue
             # Damage over time (at the start of each turn) is not a hit of this ability.
             is_dot = bool(re.search(r"\bdot\b", lp[-40:])) or bool(re.search(r"(?:beginning|start) of each turn", lt))
-            if "split evenly" in lt or "distributed evenly" in lt or "a total of" in lp[-40:] or "split evenly" in lp[-60:]:
-                target = "split"
-            elif re.search(r"one designated enemy(?: target)? and (?:its |their )?adjacent", lt):
-                target = "blast"
-            elif "adjacent" in lt:
-                target = "adj"
-            elif re.search(r"other (?:enemy )?targets|other enemies", lt):
-                target = "others"
-            elif re.search(r"all enem|all enemy", lt):
-                target = "all"
-            elif "random" in lt:
-                target = "random"
-            else:
-                target = "main"
+            target = clause_target(lt, lp)
             cnt = None
             cm = re.search(r"(?:#(\d+)\[i\]|(\d+))\s+(?:additional\s+|extra\s+)?(?:instance|hit|time)s?(?:\(s\))?[^#]{0,80}$", pre)
             if cm and target in ("random", "main", "all", "adj"):
