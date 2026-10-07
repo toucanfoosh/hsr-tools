@@ -302,13 +302,24 @@
       return amt;
     }
     // Damage over time on the enemies: applied by an ability, ticks at each enemy's turn start.
+    // `targets`: how many enemies carry it (the main target first, then its neighbours).
     addDot(dot) {
       this.dots = (this.dots || []).filter((d) => d.id !== dot.id);
-      this.dots.push({ turns: 2, ...dot });
+      this.dots.push({ turns: 2, targets: 1, ...dot });
+    }
+    // How many enemies an ability's hits reach (main target, neighbours, or everyone).
+    dotTargets(ab) {
+      const n = Math.max(1, this.enemyCount || 1);
+      const hs = (ab && ab.hits || []).filter((h) => !h.dot);
+      if (hs.some((h) => h.target === 'all' || h.target === 'others')) return n;
+      const main = hs.length === 0 || hs.some((h) => ['main', 'blast', 'random', 'split'].includes(h.target)) ? 1 : 0;
+      const adj = hs.some((h) => h.target === 'adj' || h.target === 'blast') ? Math.min(2, n - 1) : 0;
+      return Math.max(1, main + adj);
     }
     tickDots(enemy) {
       if (!this.dots || !window.AVDamage) return;
-      for (const d of this.dots) this.addDamage(d.src, window.AVDamage.dotDamage(this, d), 'DoT');
+      const idx = this.enemies().indexOf(enemy);
+      for (const d of this.dots) if (idx < d.targets) this.addDamage(d.src, window.AVDamage.dotDamage(this, d), 'DoT');
       if (enemy === this.enemies()[0]) this.dots = this.dots.filter((d) => d.turns === Infinity || --d.turns > 0);
     }
     // Damage not tied to an event marker (e.g. Robin's Concerto hits).
