@@ -148,7 +148,7 @@ def parse_damage(desc):
             else:
                 target = "main"
             cnt = None
-            cm = re.search(r"(?:#(\d+)\[i\]|(\d+))\s+(?:additional\s+)?(?:instance|hit|time)s?(?:\(s\))?[^#]{0,80}$", pre)
+            cm = re.search(r"(?:#(\d+)\[i\]|(\d+))\s+(?:additional\s+|extra\s+)?(?:instance|hit|time)s?(?:\(s\))?[^#]{0,80}$", pre)
             if cm and target in ("random", "main", "all", "adj"):
                 cnt = {"p": int(cm.group(1)) - 1} if cm.group(1) else int(cm.group(2))
             hit = {"p": int(m.group(1)) - 1, "stat": kind or STAT_KEY[m.group(2)], "target": target}
