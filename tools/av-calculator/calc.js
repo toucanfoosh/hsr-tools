@@ -35,6 +35,8 @@
     const lc = LCS[slot.lcId];
     // A light cone's passive only works on a character of the same Path.
     if (lc && lightCones[lc.id] && lc.path === ch.path) out.push({ src: 'lc', label: lc.name, ...lightCones[lc.id] });
+    const lk = lc && lc.path === ch.path && window.AVLightConeKits && window.AVLightConeKits[lc.id];
+    if (lk) out.push({ src: 'lcaudit', label: lc.name, ...lk });
     const sets = [];
     if (slot.set1 && slot.set2 === 'same') sets.push([slot.set1, 'two'], [slot.set1, 'four']);
     else {
