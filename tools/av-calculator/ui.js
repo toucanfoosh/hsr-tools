@@ -149,8 +149,10 @@
     root.addEventListener('click', onClick);
     // Hover / focus text for the eye icons, drawn in the page-level tooltip so cards can't clip it.
     const showInfo = (ev) => {
-      const icon = ev.target.closest && ev.target.closest('[data-info]');
       const tip = document.getElementById('tooltip');
+      // Leaving an icon, or anything while a window (picker / optimizer) is open, hides it.
+      const modalOpen = !document.getElementById('modal').hidden;
+      const icon = ev.type !== 'focusout' && !modalOpen && ev.target.closest && ev.target.closest('[data-info]');
       if (!icon) { if (tip.classList.contains('info')) { tip.hidden = true; tip.classList.remove('info'); } return; }
       tip.textContent = icon.dataset.info;
       tip.classList.add('info');
