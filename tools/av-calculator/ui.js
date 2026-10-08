@@ -152,7 +152,10 @@
       tip.hidden = false;
       const r = icon.getBoundingClientRect();
       tip.style.left = `${Math.max(8, Math.min(r.left - 20, window.innerWidth - tip.offsetWidth - 8))}px`;
-      tip.style.top = `${Math.max(8, r.top - tip.offsetHeight - 8)}px`;
+      // Pinned just below the icon so its top edge stays put and longer text grows downward
+      // (only flips above when there's no room below).
+      const below = r.bottom + 8;
+      tip.style.top = `${below + tip.offsetHeight > window.innerHeight - 8 && r.top - tip.offsetHeight - 8 >= 8 ? r.top - tip.offsetHeight - 8 : below}px`;
     };
     root.addEventListener('mouseover', showInfo);
     root.addEventListener('focusin', showInfo);
@@ -755,6 +758,17 @@
             <img src="${img.relic(r.id)}" alt="${attr(esc(r.name))}" loading="lazy">${equipped.has(r.id) ? '<span class="rp-dot" title="Equipped"></span>' : ''}</button>`).join('')
           || '<div class="muted gear-empty">No matches.</div>');
     };
+    // Lock the preview to the tallest set's text so hovering never resizes (and re-centers) the box.
+    const fitPreview = () => {
+      prev.style.height = '';
+      let h = 0;
+      for (const r of pool) { show(r.id); h = Math.max(h, prev.offsetHeight); }
+      prev.style.height = `${h}px`;
+      show('');
+    };
+    fitPreview();
+    const onResize = () => { if (prev.isConnected) fitPreview(); else window.removeEventListener('resize', onResize); };
+    window.addEventListener('resize', onResize);
     m.el.addEventListener('mouseover', (e) => { const t = e.target.closest('[data-hover]'); if (t) show(t.dataset.hover); });
     m.el.addEventListener('focusin', (e) => { const t = e.target.closest('[data-hover]'); if (t) show(t.dataset.hover); });
     m.el.onclick = (e) => {
