@@ -663,11 +663,16 @@
       this.tickBuffs(u, 'start');
       this.fire(u, 'turnStart');
       if (u.kind === 'char') this.fireAll('allyTurnStart', u);
-      let type = u.kind === 'summon' ? 'Summon' : (this.fire(u, 'actionType') || this.patternAction(u));
+      // The action pattern picks Basic ATK or Skill; kits may swap it for an enhanced version
+      // (they get the pattern's choice) or force one while a state lasts.
+      const base = u.kind === 'summon' ? 'Summon' : this.patternAction(u);
+      let type = u.kind === 'summon' ? 'Summon' : (this.fire(u, 'actionType', base) || base);
       // Himeko • Nova's Assist Skill replaces the action when the team setting says to use it.
       if (u.kind === 'char' && this.assist && (type === 'Basic' || type === 'Skill') && this.assist.wants(this, u)) type = 'Assist';
       // A Skill the team can't pay for becomes a Basic ATK.
       if (u.kind === 'char' && type === 'Skill' && this.spCost(u, 'Skill') > this.sp + 1e-9) type = 'Basic';
+      // Same for an enhanced Skill the pattern asked for (The Herta, Castorice's Boneclaw...).
+      if (u.kind === 'char' && type === 'Enhanced' && base === 'Skill' && this.spCost(u, 'Enhanced') > this.sp + 1e-9) type = 'Basic';
       u.actions += 1;
       // A regular turn uses up the advances since the last one; an extra turn doesn't touch
       // the action gauge, so those stay attached to the next regular turn.

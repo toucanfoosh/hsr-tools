@@ -9,6 +9,10 @@
   const PATHS = ['Destruction', 'The Hunt', 'Erudition', 'Harmony', 'Nihility', 'Preservation', 'Abundance', 'Remembrance', 'Elation'];
   const ELEMENTS = ['Physical', 'Fire', 'Ice', 'Thunder', 'Wind', 'Quantum', 'Imaginary'];
   const PATTERNS = ['S', 'B', 'SB', 'SSB', 'BBS', 'BS'];
+  const ACTION_PRESETS = [['S', 'Skill'], ['B', 'Basic ATK'], ['SB', 'Skill → Basic'],
+    ['SSB', 'Skill ×2 → Basic'], ['BBS', 'Basic ×2 → Skill']];
+  // Characters who are normally played with Basic ATKs.
+  const DEFAULT_PATTERN = { 1503: 'B' };
   const SUMMON_ROW = 30;
   const CHAR_ROW = 64;
 
@@ -47,7 +51,7 @@
     return {
       charId, eidolon: defaultEidolon(charId), lcId: '', lcS: 1, set1: '', set2: 'same', planar: '',
       spd: '', spdAuto: true, boots: true, subSpd: 0, extraPct: 0, extraFlat: 0, override: '',
-      pattern: 'S', ultMode: 'on', ultFirst: 3, ultEvery: 3, target: null,
+      pattern: DEFAULT_PATTERN[charId] || 'S', ultMode: 'on', ultFirst: 3, ultEvery: 3, target: null,
     };
   }
   // Gear, eidolon and SPD straight from the loaded account (Reliquary Archiver).
@@ -282,7 +286,7 @@
           <div class="relic-tiles">
             ${s.set1 && s.set2 === 'same'
               // A full 4-piece: one tile, with a small + on its corner to split it into 2pc + 2pc.
-              ? `<div class="relic-slot">${relicTile(i, 'set1', s.set1, '4pc')}<button type="button" class="relic-add" data-action="gear" data-kind="set2" data-slot="${i}" title="Add a 2nd set (2-piece + 2-piece)" aria-label="Add a 2nd relic set">+</button></div>`
+              ? `<div class="relic-slot">${relicTile(i, 'set1', s.set1, '4pc')}<button type="button" class="relic-add" data-action="gear" data-kind="set2" data-slot="${i}" title="Add a 2nd set (2-piece + 2-piece)" aria-label="Add a 2nd relic set"></button></div>`
               : `${relicTile(i, 'set1', s.set1, s.set1 ? '2pc' : 'Set')}${s.set1 ? relicTile(i, 'set2', s.set2, '2pc') : ''}`}
             ${relicTile(i, 'planar', s.planar, 'Planar')}
           </div>
@@ -389,6 +393,17 @@
     </div>`;
   }
 
+  // The Actions choice: common patterns in a list, or a custom pattern typed in.
+  function actionsControl(s, f) {
+    const pat = String(s.pattern || 'S').toUpperCase();
+    const custom = s.patternCustom || !ACTION_PRESETS.some(([p]) => p === pat);
+    return `<select ${f('patternPreset')} aria-label="Actions">
+        ${ACTION_PRESETS.map(([p, lab]) => `<option value="${p}"${!custom && p === pat ? ' selected' : ''}>${esc(lab)}</option>`).join('')}
+        <option value="custom"${custom ? ' selected' : ''}>Custom…</option>
+      </select>
+      ${custom ? `<input type="text" list="patterns" ${f('pattern')} value="${esc(s.pattern)}" placeholder="e.g. SSB" aria-label="Custom action pattern">` : ''}`;
+  }
+
   // Actions pattern, Ultimate timing and the ER rope toggle.
   function ultField(s, ch, i, f) {
     const auto = autoUlt(ch);
@@ -412,8 +427,8 @@
           </select></div>`;
     const manual = !auto && (timing === 'schedule' || !hasEnergy);
     return `<div class="row ult-row">
-        <label class="field"><span class="label-row">Actions ${infoIcon('S = Skill, B = Basic ATK. The pattern repeats: SSB means Skill, Skill, Basic ATK. A Skill without Skill Points becomes a Basic ATK.')}</span>
-          <input type="text" list="patterns" ${f('pattern')} value="${esc(s.pattern)}"></label>
+        <div class="field"><span class="label-row">Actions ${infoIcon('What this character does on their turns. A Skill turn becomes a Basic ATK only when the team has no Skill Points left; Skills that cost none never do. Kit-specific actions (enhanced Basic ATKs, transformations) replace the matching choice automatically.\n\nCustom: a repeating pattern, S = Skill, B = Basic ATK (A = Assist Skill with Himeko • Nova). SSB means Skill, Skill, Basic ATK.')}</span>
+          ${actionsControl(s, f)}</div>
         ${ult}
       </div>
       ${manual ? manualUlt(s, i, f) : ''}
@@ -427,8 +442,18 @@
     if (!kit.options.length) return '';
     const opts = s.opts || {};
     return `<div class="kit-opts">${kit.options.map((o) => {
+      if (o.showIf && !o.showIf(opts)) return '';
       const v = opts[o.key] === undefined ? o.def : opts[o.key];
       const d = `data-slot="${i}" data-opt="${o.key}"`;
+      if (o.type === 'allies') {
+        // One checkbox per teammate (by team slot), with an optional per-character note.
+        const on = new Set(Array.isArray(v) ? v : allyDefault(i));
+        const mates = state.slots.map((m, k) => [m, k]).filter(([m, k]) => m && CHARS[m.charId] && k !== i);
+        return `<div class="field"><span>${esc(o.label)}</span><div class="ally-checks">${mates.length ? mates.map(([m, k]) => {
+          const note = o.note ? o.note(m.charId) : '';
+          return `<label class="check"><input type="checkbox" ${d} data-ally="${k}" ${on.has(k) ? 'checked' : ''}> ${esc(CHARS[m.charId].name)}${note ? ` <span class="muted small">· ${esc(note)}</span>` : ''}</label>`;
+        }).join('') : '<span class="muted small">Add teammates first.</span>'}</div></div>`;
+      }
       if (o.type === 'select') {
         return `<label class="field"><span>${esc(o.label)}</span><select ${d}>${o.choices.map(([val, lab]) =>
           `<option value="${val}"${String(v) === val ? ' selected' : ''}>${esc(lab)}</option>`).join('')}</select></label>`;
@@ -438,6 +463,9 @@
         : `<label class="field"><span>${esc(o.label)}</span><input type="number" ${d} min="${o.min}" max="${o.max}" step="${o.step}" value="${v}"></label>`;
     }).join('')}</div>`;
   }
+
+  // An 'allies' option with nothing saved yet: every teammate.
+  const allyDefault = (i) => state.slots.map((m, k) => (m && k !== i ? k : -1)).filter((k) => k >= 0);
 
   // Gear thumbnail; an empty slot keeps its size so the selects stay aligned.
   const thumb = (src) => (src ? `<img class="thumb" src="${src}" alt="">` : '<span class="thumb empty"></span>');
@@ -518,8 +546,15 @@
     if (t.dataset.opt !== undefined) {
       const s = state.slots[+t.dataset.slot];
       s.opts = s.opts || {};
+      if (t.dataset.ally !== undefined) {
+        const cur = new Set(Array.isArray(s.opts[t.dataset.opt]) ? s.opts[t.dataset.opt] : allyDefault(+t.dataset.slot));
+        if (t.checked) cur.add(+t.dataset.ally); else cur.delete(+t.dataset.ally);
+        s.opts[t.dataset.opt] = [...cur].sort((a, b) => a - b);
+        changed(false);
+        return;
+      }
       s.opts[t.dataset.opt] = t.type === 'checkbox' ? t.checked : t.tagName === 'SELECT' ? t.value : (t.value === '' ? '' : +t.value);
-      changed(false);
+      changed(t.tagName === 'SELECT');
       return;
     }
     if (t.dataset.f === undefined) return;
@@ -530,6 +565,12 @@
     else if (f === 'ultFirst') s.ultFirst = Math.max(1, +t.value || 1);
     else if (f === 'ultEvery') s.ultEvery = Math.max(1, +t.value || 1);
     else if (f === 'target') s.target = +t.value;
+    else if (f === 'patternPreset') {
+      if (t.value === 'custom') s.patternCustom = true;
+      else { s.pattern = t.value; s.patternCustom = false; }
+      changed(true);
+      return;
+    }
     else if (t.type === 'number') s[f] = t.value === '' ? (f === 'override' ? '' : 0) : +t.value;
     else s[f] = t.value;
     if (f === 'set1' && (!s.set1 || s.set2 === s.set1)) s.set2 = 'same';

@@ -394,7 +394,7 @@
         if (sim.chars().filter((a) => a.cfg.char.path === 'Erudition').length >= 2) n = Math.max(3, n);
         return Math.min(5, n);
       },
-      actionType(sim, u) { return u.state.insp > 0 ? 'Enhanced' : undefined; },
+      actionType(sim, u, base) { return u.state.insp > 0 && base === 'Skill' ? 'Enhanced' : undefined; },
       energyFor(sim, u, t) { return t === 'Enhanced' ? 30 : undefined; },
       spCost(sim, u, t) { return t === 'Enhanced' ? 1 : undefined; },
       action(sim, u, t) {
@@ -582,7 +582,7 @@
       desc: 'Turn: Skill starts a livestream (Engagement Farming ×N, each costs 1 SP and gives 2 Punchline + 2 SP or 1 Punchline, alternating), then the Enhanced Basic "Bloom!" (40 Energy). Ultimate: +2 Punchline, +2/4/8 more for 1/2/3+ Elation (and Thrill), E4 +5. Elation Skill: +2 Thrill (Thrill pays for SP). E1: +5 Punchline after each Aha Instant; E2: extra turn after each Aha Instant.',
       options: [{ key: 'farm', label: 'Engagement Farming uses per Skill', type: 'number', def: 2, min: 1, max: 20, step: 1 }],
       battleStart(sim, u) { u.state.thrill = 0; },
-      actionType(sim, u) { return 'Enhanced'; },
+      actionType(sim, u, base) { return base === 'Basic' ? 'Basic' : 'Enhanced'; }, // Skill = livestream + Bloom!
       energyFor(sim, u, t) { return t === 'Enhanced' ? 40 : undefined; },
       spCost(sim, u, t) { return t === 'Enhanced' ? 0 : undefined; },
       action(sim, u, t) {
@@ -650,7 +650,7 @@
         // The temporary Punchline is removed at the end of that extra turn.
         if (u.state.tempPl && actor === u.state.extraOwner) { sim.punchline = Math.max(0, sim.punchline - u.state.tempPl); u.state.tempPl = 0; u.state.extraOwner = null; }
       },
-      actionType(sim, u) { return u.state.deep > 0 ? 'Enhanced' : undefined; },
+      actionType(sim, u, base) { return u.state.deep > 0 && base === 'Basic' ? 'Enhanced' : undefined; }, // Deep Learning enhances her Basic ATK
       energyFor(sim, u, t) { return t === 'Enhanced' ? 30 : undefined; },
       spCost(sim, u, t) { return t === 'Enhanced' ? -1 : undefined; },
       action(sim, u, t) {

@@ -247,7 +247,7 @@
         sim.gainSP(1, u);
         sim.actNow(u);
       },
-      actionType(sim, u) { return u.state.release ? 'Enhanced' : undefined; },
+      actionType(sim, u, base) { return u.state.release && base === 'Basic' ? 'Enhanced' : undefined; }, // Release replaces her Basic ATK
       spCost(sim, u, t) { return t === 'Enhanced' ? -1 : undefined; },
       energyFor(sim, u, t) { return t === 'Enhanced' ? 30 : undefined; },
       action(sim, u, t) {
@@ -432,7 +432,7 @@
       desc: 'Skill Burns (65% ATK, 2 turns; E2: 3). After Ultimate the next Skill is Enhanced (blast; E1 +20% DMG). Talent: attacking a Burned enemy adds 100% ATK (E4: also Burns adjacent). E6: +20% DMG vs Burned.',
       burned(sim, u) { return (sim.dots || []).some((d) => d.src === u); },
       ult(sim, u) { u.state.enhanced = true; },
-      actionType(sim, u) { return u.state.enhanced ? 'Enhanced' : undefined; },
+      actionType(sim, u, base) { return u.state.enhanced && base === 'Skill' ? 'Enhanced' : undefined; }, // Enhanced Skill
       spCost(sim, u, t) { return t === 'Enhanced' ? 1 : undefined; },
       energyFor(sim, u, t) { return t === 'Enhanced' ? 30 : undefined; },
       dotTurns(sim, u) { return E(u) >= 2 ? 3 : 2; },
@@ -470,7 +470,7 @@
           if (E(u) >= 4) sim.addBuff(u, { id: 'lukaE4', stats: { atkPct: 0.05 }, turns: Infinity, maxStacks: 4 });
         }
       },
-      actionType(sim, u, t) { return u.state.fw >= 2 ? 'Enhanced' : undefined; },
+      actionType(sim, u, base) { return u.state.fw >= 2 && base === 'Basic' ? 'Enhanced' : undefined; }, // Sky-Shatter Fist is his Basic ATK
       spCost(sim, u, t) { return t === 'Enhanced' ? -1 : undefined; },
       energyFor(sim, u, t) { return t === 'Enhanced' ? 20 : undefined; },
       bleeding(sim, u) { return (sim.dots || []).some((d) => d.id === `${u.key}:Lacerating Fist`); },
@@ -1136,7 +1136,7 @@
       desc: 'Ultimate: Besotted on all enemies for 2 turns (E4: 3), +12% Break DMG taken; his next Basic ATK becomes Nectar Blitz (250%, −15% enemy ATK). E6: +20% Break Effect and Weakness Break Efficiency.',
       battleStart(sim, u) { if (E(u) >= 6) self(sim, u, 'gallagherE6', { be: 0.2, wbe: 0.2 }, Infinity); },
       ult(sim, u) { u.state.nectar = true; emod(sim, 'besotted', { vulnType: { Break: 0.12 } }, E(u) >= 4 ? 3 : 2); },
-      actionType(sim, u) { return u.state.nectar ? 'Enhanced' : undefined; },
+      actionType(sim, u, base) { return u.state.nectar && base === 'Basic' ? 'Enhanced' : undefined; }, // Nectar Blitz
       spCost(sim, u, t) { return t === 'Enhanced' ? -1 : undefined; },
       action(sim, u, t) { if (t === 'Enhanced') u.state.nectar = false; },
     },
@@ -1766,7 +1766,7 @@
         }
         this.torch(sim, u);
       },
-      actionType(sim, u) { return this.nw(sim, u) ? 'Enhanced' : undefined; },
+      actionType(sim, u, base) { return this.nw(sim, u) && base === 'Skill' ? 'Enhanced' : undefined; }, // Boneclaw replaces her Skill
       spCost(sim, u, t) { return t === 'Enhanced' ? 1 : undefined; },
       energyFor(sim, u, t) { return t === 'Enhanced' || t === 'Skill' ? 0 : undefined; },
       action(sim, u, t) {
@@ -2565,7 +2565,7 @@
       battleStart(sim, u) { u.state.will = E(u) >= 4 ? 4 : 0; u.state.shield = false; },
       hit(sim, u) { u.state.will = Math.min(8, u.state.will + 1); },
       turnStart(sim, u) { if (u.state.shield) { G(sim, u, 5); self(sim, u, 'actionBeats', { atkPct: 0.15 }, 1); } },
-      actionType(sim, u) { return u.state.free || u.state.will >= 4 ? 'Enhanced' : undefined; },
+      actionType(sim, u, base) { return (u.state.free || u.state.will >= 4) && base === 'Basic' ? 'Enhanced' : undefined; },
       spCost(sim, u, t) { return t === 'Enhanced' ? -1 : undefined; },
       action(sim, u, t) {
         if (t === 'Enhanced') { if (u.state.free) u.state.free = false; else u.state.will -= 4; }
@@ -2631,7 +2631,7 @@
         this.energySync(sim, u);
         if (a.name === 'Mem' && a.owner === u && t === 'Summon') this.charge(sim, u, 0.05);
       },
-      actionType(sim, u) { return u.state.epic > 0 && this.mem(sim, u) ? 'Enhanced' : undefined; },
+      actionType(sim, u, base) { return u.state.epic > 0 && this.mem(sim, u) && base === 'Basic' ? 'Enhanced' : undefined; },
       spCost(sim, u, t) { return t === 'Enhanced' ? -1 : undefined; },
       action(sim, u, t) {
         if (t === 'Skill') {
