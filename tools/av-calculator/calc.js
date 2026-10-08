@@ -125,20 +125,15 @@
     const len = state.mode === 'custom' ? +state.customLen || 100 : mode.len;
     const cycles = Math.max(1, Math.min(60, +state.showCycles || DEFAULT_CYCLES));
     const maxAV = first + (cycles - 1) * len;
-    // A sample enemy (current Anomaly Arbitration boss) replaces the manual enemy settings.
-    const presets = (window.HSR_ENEMY_PRESETS && window.HSR_ENEMY_PRESETS.presets) || [];
-    const pre = presets.find((p) => p.id === state.enemyPreset);
-    const none = state.enemyPreset === 'none';
     const sim = new Sim({
       firstCycle: first, cycleLen: len, maxAV,
-      enemies: none ? 0 : pre ? pre.count : state.enemies == null ? 2 : +state.enemies,
-      enemySpd: pre ? pre.spd : +state.enemySpd || 120,
+      enemies: state.enemies == null ? 2 : +state.enemies,
+      enemySpd: +state.enemySpd || 120,
       enemyHits: state.enemyHits == null ? 1 : +state.enemyHits,
-      enemyLevel: pre ? pre.level : +state.enemyLevel || 95,
+      enemyLevel: +state.enemyLevel || 95,
       enemyRes: state.enemyRes == null || state.enemyRes === '' ? 0.2 : +state.enemyRes / 100,
-      enemyResEl: pre ? pre.res : null,
       enemyBroken: !!state.enemyBroken,
-      enemyToughness: pre ? pre.toughness : +state.enemyToughness || 160,
+      enemyToughness: +state.enemyToughness || 160,
       breaks: state.breaks === true,
       elationAttacks: state.elationAttacks !== false,
     });

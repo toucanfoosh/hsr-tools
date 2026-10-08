@@ -60,7 +60,9 @@
     return out;
   }
 
-  async function run({ state, slotIdx, goal = 'dmg', allowWorn = true, minSpd = 0, mains = {}, minRarity = 5, onProgress = () => {}, isCancelled = () => false }) {
+  // relicSetIds / planarIds: when given, builds must use a 4-piece of one of those relic sets /
+  // a 2-piece of one of those planar sets; empty means anything goes (mix and match).
+  async function run({ state, slotIdx, goal = 'dmg', allowWorn = true, minSpd = 0, mains = {}, minRarity = 5, minLevel = 0, relicSetIds = [], planarIds = [], exclude = new Set(), freeOwners = new Set(), startPieces = null, onProgress = () => {}, isCancelled = () => false }) {
     const acc = A().data;
     if (!acc) throw new Error('Load your account first (Reliquary Archiver or an export file).');
     const base = state.slots[slotIdx];
@@ -74,14 +76,19 @@
     const pool = {};
     for (const s of SLOTS) pool[s] = [];
     for (const r of acc.export.relics) {
-      if (!pool[r.slot] || (r.rarity || 5) < minRarity) continue;
+      if (!pool[r.slot] || (r.rarity || 5) < minRarity || (r.level || 0) < minLevel) continue;
+      if (CAVERN.includes(r.slot) && relicSetIds.length && !relicSetIds.includes(String(r.set_id))) continue;
+      if (PLANAR.includes(r.slot) && planarIds.length && !planarIds.includes(String(r.set_id))) continue;
       const o = owner(r);
-      if (o && o !== String(charId) && !allowWorn) continue;
+      if (exclude.has(r._uid)) continue; // taken by a teammate in a team optimization
+      // Pieces on other characters are allowed with the toggle; teammates' pieces always are in
+      // a team run (they're being reassigned anyway).
+      if (o && o !== String(charId) && !allowWorn && !freeOwners.has(o)) continue;
       if (mains[r.slot] && mains[r.slot].length && !mains[r.slot].includes(r.mainstat)) continue;
       pool[r.slot].push(r);
     }
     for (const s of SLOTS) if (!pool[s].length) throw new Error(`No ${s} pieces match the filters.`);
-    const equipped = acc.export.relics.filter((r) => owner(r) === String(charId));
+    const equipped = startPieces || acc.export.relics.filter((r) => owner(r) === String(charId));
 
     const relicSets = [...new Set(CAVERN.flatMap((s) => pool[s].map((p) => String(p.set_id))))];
     const planarSets = [...new Set(PLANAR.flatMap((s) => pool[s].map((p) => String(p.set_id))))];
@@ -127,9 +134,12 @@
       for (const [id, list] of Object.entries(by)) best[s][id] = list.sort((a, b) => b._score - a._score).slice(0, TOP);
     }
     const pick = (s, set, k = 0) => (best[s][set] || [])[k];
-    const cavernPlans = [{ name: 'any', slots: CAVERN.map((s) => [s, '*']), bonus: 0 }];
+    // With chosen relic sets only their 4-piece plans are allowed; otherwise anything goes.
+    const restricted = relicSetIds.length > 0;
+    const cavernPlans = restricted ? [] : [{ name: 'any', slots: CAVERN.map((s) => [s, '*']), bonus: 0 }];
     for (const a of relicSets) {
       if (CAVERN.every((s) => pick(s, a))) cavernPlans.push({ name: `4pc ${a}`, slots: CAVERN.map((s) => [s, a]), bonus: bonus4[a] });
+      if (restricted) continue;
       for (const b of relicSets) {
         if (b <= a) continue;
         for (let mask = 0; mask < 16; mask++) {
@@ -147,7 +157,7 @@
         if (slots.every(([s, set]) => pick(s, set))) cavernPlans.push({ name: `2pc ${a}`, slots, bonus: bonus2[a] });
       }
     }
-    const planarPlans = [{ slots: PLANAR.map((s) => [s, '*']), bonus: 0 }];
+    const planarPlans = planarIds.length ? [] : [{ slots: PLANAR.map((s) => [s, '*']), bonus: 0 }];
     for (const p of planarSets) if (PLANAR.every((s) => pick(s, p))) planarPlans.push({ slots: PLANAR.map((s) => [s, p]), bonus: bonusP[p] });
 
     const cands = [];
@@ -173,7 +183,11 @@
       if (minSpd > 0 && panelSpd(slotWith(base, c.pieces)) < minSpd - 1e-6) continue;
       shortlist.push(c);
     }
-    if (!shortlist.length) throw new Error(minSpd > 0 ? `No build reaches ${minSpd} SPD with these pieces.` : 'No builds found.');
+    if (!shortlist.length) {
+      if (!cavernPlans.length) throw new Error('None of the chosen relic sets has a piece for all 4 slots (Head, Hands, Body, Feet) with these filters.');
+      if (!planarPlans.length) throw new Error('None of the chosen planar sets has both a Sphere and a Rope with these filters.');
+      throw new Error(minSpd > 0 ? `No build reaches ${minSpd} SPD with these pieces.` : 'No builds found.');
+    }
 
     // ---- 4. full sims on the shortlist, then piece swaps on the best
     total -= SHORTLIST - shortlist.length; // fewer candidates than planned
@@ -184,7 +198,10 @@
       let improved = false;
       for (let i = 0; i < SLOTS.length; i++) {
         const s = SLOTS[i];
-        const alts = [...pool[s]].sort((a, b) => b._score - a._score).filter((p) => p._uid !== top.pieces[i]._uid).slice(0, 5);
+        // Keep the build inside the chosen sets: swap for a piece of the same set when restricted.
+        const sameSet = (CAVERN.includes(s) && relicSetIds.length) || (PLANAR.includes(s) && planarIds.length);
+        const alts = [...pool[s]].filter((p) => p._uid !== top.pieces[i]._uid && (!sameSet || p.set_id === top.pieces[i].set_id))
+          .sort((a, b) => b._score - a._score).slice(0, 5);
         for (const p of alts) {
           const pieces = top.pieces.map((q, k) => (k === i ? p : q));
           const slot = slotWith(base, pieces);
@@ -205,10 +222,62 @@
         value: c.value,
         slot: c.slot,
         spd: panelSpd(c.slot),
-        pieces: c.pieces.map((p) => ({ ...p, wornBy: owner(p) && owner(p) !== String(charId) ? names[owner(p)] || 'another character' : '' })),
+        pieces: c.pieces.map((p) => ({ ...p, _stats: undefined, wornBy: owner(p) && owner(p) !== String(charId) ? names[owner(p)] || 'another character' : '' })),
       }));
     return { results, currentValue, weights: weight, goal };
   }
 
-  window.AVOptimizer = { run, measure, SLOTS };
+  // Whole team: each member in priority order gets the best pieces still free, so no relic is
+  // used twice; then a second pass re-optimizes everyone against the others' final builds and
+  // keeps a change only if the goal improves. `members`: [{ slotIdx, filters }].
+  async function runTeam({ state, members, goal = 'team', allowWorn = true, minRarity = 5, minLevel = 0, onProgress = () => {}, isCancelled = () => false }) {
+    const acc = A().data;
+    if (!acc) throw new Error('Load your account first (Reliquary Archiver or an export file).');
+    const owner = (r) => (r.location ? A().normId(r.location) : '');
+    const teamIds = new Set(members.map((m) => String(state.slots[m.slotIdx].charId)));
+    const st = JSON.parse(JSON.stringify(state));
+    const assigned = new Map(); // slotIdx -> pieces
+    const passes = 2, runs = members.length * passes;
+    let k = 0;
+    const one = async (m, pass) => {
+      const exclude = new Set();
+      for (const [idx, pieces] of assigned) if (idx !== m.slotIdx) pieces.forEach((p) => exclude.add(p._uid));
+      const memberGoal = goal === 'team' ? 'team' : 'dmg';
+      const res = await run({
+        state: st, slotIdx: m.slotIdx, goal: memberGoal, allowWorn, minRarity, minLevel, exclude, freeOwners: teamIds,
+        startPieces: assigned.get(m.slotIdx) || null,
+        minSpd: +m.filters.minSpd || 0, mains: m.filters.mains || {}, relicSetIds: m.filters.relics || [], planarIds: m.filters.planars || [],
+        onProgress: (p) => onProgress({ phase: `${p.phase} · ${st.slots[m.slotIdx] && window.AVCalc.CHARS[st.slots[m.slotIdx].charId].name} (pass ${pass + 1})`, done: k + Math.min(1, p.done / p.total), total: runs }),
+        isCancelled,
+      });
+      const best = res.results[0];
+      // Pass 2 keeps the new build only if it beats the current one for this goal.
+      if (pass === 0 || best.value > res.currentValue * (1 + 1e-9)) {
+        assigned.set(m.slotIdx, best.pieces);
+        st.slots[m.slotIdx] = best.slot;
+      }
+      k += 1;
+    };
+    for (let pass = 0; pass < passes; pass++) for (const m of members) await one(m, pass);
+    onProgress({ phase: 'Done', done: runs, total: runs });
+    const final = window.AVCalc.simulate(st);
+    const before = window.AVCalc.simulate(state);
+    const teamDmg = (r) => r.units.reduce((a, x) => a + (x.unit.dmgTotal || 0), 0);
+    const names = Object.fromEntries(window.HSR_DATA.characters.map((c) => [c.id, c.name]));
+    return {
+      goal,
+      teamBefore: teamDmg(before), teamAfter: teamDmg(final),
+      members: members.map((m) => {
+        const row = final.units.find((x) => x.slot === m.slotIdx), was = before.units.find((x) => x.slot === m.slotIdx);
+        const cid = String(st.slots[m.slotIdx].charId);
+        return {
+          slotIdx: m.slotIdx, slot: st.slots[m.slotIdx], spd: window.AVCalc.panelStats(st.slots[m.slotIdx]).panel,
+          dmgBefore: was ? was.unit.dmgTotal || 0 : 0, dmgAfter: row ? row.unit.dmgTotal || 0 : 0,
+          pieces: (assigned.get(m.slotIdx) || []).map((p) => ({ ...p, wornBy: owner(p) && owner(p) !== cid ? names[owner(p)] || 'another character' : '' })),
+        };
+      }),
+    };
+  }
+
+  window.AVOptimizer = { run, runTeam, measure, SLOTS };
 })();

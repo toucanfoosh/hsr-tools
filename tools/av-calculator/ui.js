@@ -9,7 +9,6 @@
   const PATHS = ['Destruction', 'The Hunt', 'Erudition', 'Harmony', 'Nihility', 'Preservation', 'Abundance', 'Remembrance', 'Elation'];
   const ELEMENTS = ['Physical', 'Fire', 'Ice', 'Thunder', 'Wind', 'Quantum', 'Imaginary'];
   const PATTERNS = ['S', 'B', 'SB', 'SSB', 'BBS', 'BS'];
-  const PRESET_IDS = () => new Set(((window.HSR_ENEMY_PRESETS && window.HSR_ENEMY_PRESETS.presets) || []).map((p) => p.id));
   const ACTION_PRESETS = [['S', 'Skill'], ['B', 'Basic ATK'], ['SB', 'Skill → Basic'],
     ['SSB', 'Skill ×2 → Basic'], ['BBS', 'Basic ×2 → Skill']];
   // Characters who are normally played with Basic ATKs.
@@ -126,6 +125,7 @@
         <div class="section-head">
           <h2>Team</h2>
           <div class="head-actions">
+            <button class="btn" data-action="optimizeTeam" hidden title="Find relics for the whole team from your inventory, without sharing pieces">Optimize team</button>
             <button class="btn ghost" data-action="demo">Load example</button>
             <button class="btn ghost" data-action="clear">Clear team</button>
             <button class="btn" data-action="share">Copy share link</button>
@@ -190,8 +190,6 @@
 
   function renderModeBar() {
     const bar = root.querySelector('#mode-bar');
-    const PRESETS = (window.HSR_ENEMY_PRESETS && window.HSR_ENEMY_PRESETS.presets) || [];
-    const preset = PRESETS.find((p) => p.id === state.enemyPreset);
     bar.innerHTML = `
       <label class="field mode-select"><span>Game mode</span>
         <select data-g="mode">${Object.entries(MODES).map(([k, m]) =>
@@ -199,14 +197,7 @@
         </select></label>
       <label class="field num"><span>Cycles shown</span>
         <input type="number" min="1" max="60" data-g="showCycles" value="${state.showCycles || 4}"></label>
-      <label class="field enemy-select"><span class="label-row">Enemy ${infoIcon('Sample enemies are the current Anomaly Arbitration bosses (updated from the wiki): their SPD (scaled for level), Toughness, level and per-Type RES (0% for their Weaknesses) replace the manual enemy settings. Mechanics like shields, phases and summons are not simulated.')}</span>
-        <select data-g="enemyPreset">
-          <option value=""${!state.enemyPreset ? ' selected' : ''}>Manual settings</option>
-          <option value="none"${state.enemyPreset === 'none' ? ' selected' : ''}>No enemy</option>
-          ${PRESETS.map((p) => `<option value="${p.id}"${state.enemyPreset === p.id ? ' selected' : ''}>${esc(p.label)}</option>`).join('')}
-        </select></label>
-      ${preset ? `<div class="field enemy-info"><span>${esc(preset.name)}</span><div class="muted small">Lv. ${preset.level} · SPD ${fmt(preset.spd, 1)} · Toughness ${preset.toughness}${preset.count > 1 ? ` · ${preset.count} parts` : ''}<br>Weak: ${preset.weak.map((w) => EL_NAME[w] || w).join(', ')}</div></div>` : ''}
-      ${state.enemyPreset ? '' : `      <label class="field num"><span class="label-row">Enemies ${infoIcon('Enemies take turns on the timeline. Each enemy turn hits your team (spread by taunt), triggering counters and on-hit effects. Energy from being hit is not counted. The count also sets how many targets AoE / Blast abilities hit.')}</span>
+      <label class="field num"><span class="label-row">Enemies ${infoIcon('Enemies take turns on the timeline. Each enemy turn hits your team (spread by taunt), triggering counters and on-hit effects. Energy from being hit is not counted. The count also sets how many targets AoE / Blast abilities hit.')}</span>
         <input type="number" min="0" max="5" data-g="enemies" value="${state.enemies == null ? 2 : state.enemies}"></label>
       <label class="field num"><span>Enemy SPD</span>
         <input type="number" min="1" max="500" data-g="enemySpd" value="${state.enemySpd || 120}"></label>
@@ -215,9 +206,8 @@
 
       <label class="field num"><span>Enemy Lv</span>
         <input type="number" min="1" max="120" data-g="enemyLevel" value="${state.enemyLevel || 95}"></label>
-      <label class="field num"><span class="label-row">Enemy RES % ${infoIcon('The enemies\' RES to your damage types. 20% is the default for most enemies; 0% if they are weak to your damage type.')}</span>
+      <label class="field num"><span class="label-row">Enemy RES % ${infoIcon('A standard enemy: the same RES to every damage type (20% is typical). Enemies aren\'t killed, so HP doesn\'t matter.')}</span>
         <input type="number" min="-100" max="100" data-g="enemyRes" value="${state.enemyRes == null ? 20 : state.enemyRes}"></label>
-`}
       <label class="field num"><span>Hits / turn</span>
         <input type="number" min="0" max="5" data-g="enemyHits" value="${state.enemyHits == null ? 1 : state.enemyHits}"></label>
       <label class="check elation-attacks"><input type="checkbox" data-g="breaks" ${state.breaks ? 'checked' : ''}>
@@ -233,6 +223,8 @@
   // ---------------------------------------------------------------- team cards
   function renderTeam() {
     const team = root.querySelector('#team');
+    const ot = root.querySelector('[data-action="optimizeTeam"]');
+    if (ot) ot.hidden = !Account.data || state.slots.filter((x) => x && CHARS[x.charId]).length < 2;
     team.innerHTML = state.slots.map((s, i) => (s && CHARS[s.charId] ? slotCard(s, i) : emptySlot(i))).join('');
     updateSpeeds();
   }
@@ -524,6 +516,7 @@
       case 'spdAuto': ev.preventDefault(); state.slots[i].spdAuto = true; state.slots[i].spd = ''; changed(true); break;
       case 'gear': ev.stopPropagation(); openGearPicker(i, t.dataset.kind); break;
       case 'optimize': ev.stopPropagation(); openOptimizer(i); break;
+      case 'optimizeTeam': openTeamOptimizer(); break;
       case 'sync': ev.stopPropagation(); if (applyAccount(state.slots[i])) changed(true); break;
       case 'demo': state = JSON.parse(JSON.stringify(DEMO)); renderModeBar(); changed(true); break;
       case 'clear': state.slots = [null, null, null, null]; changed(true); break;
@@ -544,8 +537,7 @@
     if (t.dataset.g) {
       const v = t.type === 'number' ? t.value : t.value;
       state[t.dataset.g] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (v === '' ? '' : +v) : v;
-      if (t.dataset.g === 'enemyPreset' && PRESET_IDS().has(t.value)) state.mode = 'aa'; // the bosses are Anomaly Arbitration fights
-      if (t.dataset.g === 'mode' || t.dataset.g === 'breaks' || t.dataset.g === 'enemyPreset') renderModeBar();
+      if (t.dataset.g === 'mode' || t.dataset.g === 'breaks' ) renderModeBar();
       changed(false);
       return;
     }
@@ -949,7 +941,7 @@
     }).join('');
     const noRelics = r.units.filter(({ unit }) => (!unit.cfg.relicStats || !Object.keys(unit.cfg.relicStats).length) && !(unit.cfg.statTotals && Object.keys(unit.cfg.statTotals).length)).map(({ stats }) => shortName(stats.ch.name));
     return `<div class="section">
-      <div class="section-head"><h2>Damage</h2><span class="muted small">Estimate · ${r.sim.enemyCount} enem${r.sim.enemyCount === 1 ? 'y' : 'ies'}, Lv. ${r.sim.enemyLevel}, ${r.sim.enemyResEl ? 'RES by Type (sample enemy)' : `${Math.round(r.sim.enemyRes * 100)}% RES`} ${infoIcon(DMG_NOTE)}</span></div>
+      <div class="section-head"><h2>Damage</h2><span class="muted small">Estimate · ${r.sim.enemyCount} enem${r.sim.enemyCount === 1 ? 'y' : 'ies'}, Lv. ${r.sim.enemyLevel}, ${Math.round(r.sim.enemyRes * 100)}% RES ${infoIcon(DMG_NOTE)}</span></div>
       <div class="card dmg-card">
         <div class="dmg-totals">
           <div><b>${fmtBig(total)}</b><span>Team damage</span></div>
@@ -1285,115 +1277,247 @@
   const SUB_SHORT = { HP: 'HP', ATK: 'ATK', DEF: 'DEF', HP_: 'HP', ATK_: 'ATK', DEF_: 'DEF', 'CRIT Rate_': 'CR', 'CRIT DMG_': 'CD', 'Effect Hit Rate_': 'EHR', 'Effect RES_': 'RES', 'Break Effect_': 'BE', SPD: 'SPD' };
   const OPT_MAIN_SLOTS = ['Body', 'Feet', 'Planar Sphere', 'Link Rope'];
 
-  function openOptimizer(slotIdx) {
-    const s = state.slots[slotIdx];
-    const ch = CHARS[s.charId];
+  // Optimizer settings, kept with the team: global options plus filters per character.
+  function optCfg() {
+    const cfg = state.optimizer || (state.optimizer = {});
+    if (!cfg.goal) cfg.goal = 'dmg';
+    if (cfg.allowWorn === undefined) cfg.allowWorn = true;
+    if (cfg.fiveOnly === undefined) cfg.fiveOnly = true;
+    if (cfg.minLevel === undefined) cfg.minLevel = 0;
+    cfg.perChar = cfg.perChar || {};
+    return cfg;
+  }
+  function charFilters(cfg, charId) {
+    const f = cfg.perChar[charId] || (cfg.perChar[charId] = {});
+    f.relics = f.relics || []; f.planars = f.planars || []; f.mains = f.mains || (cfg.mains && cfg.mains[charId]) || {};
+    if (f.minSpd === undefined) f.minSpd = '';
+    return f;
+  }
+  // Relic / planar sets present in the inventory, with piece counts.
+  function inventorySets() {
     const relics = (Account.data && Account.data.export.relics) || [];
-    const mainsBySlot = Object.fromEntries(OPT_MAIN_SLOTS.map((sl) => [sl, [...new Set(relics.filter((r) => r.slot === sl).map((r) => r.mainstat))].sort()]));
-    const cfg = state.optimizer || (state.optimizer = { goal: 'dmg', allowWorn: true, minSpd: '', fiveOnly: true, mains: {} });
-    const mains = cfg.mains[s.charId] || (cfg.mains[s.charId] = {});
-    let running = null;
-    const m = window.HSRTools.openModal(`
-      <div class="card modal-box opt-box" role="dialog" aria-label="Optimize relics">
-        <div class="modal-head">
-          <div class="top"><h3>Optimize relics · ${esc(ch.name)}</h3><button class="btn ghost" data-close>Close</button></div>
-          <p class="muted small">Searches your ${relics.length} imported relics for the best 6 pieces, scoring each build with the full battle sim using your current team and battle settings (${esc(MODES[state.mode] ? MODES[state.mode].name : '')}, ${state.showCycles || 4} cycles${state.enemyPreset && state.enemyPreset !== 'none' ? ', sample enemy' : ''}). Light cone, eidolon and teammates stay as they are.</p>
-          <div class="opt-controls">
-            <label class="field"><span>Optimize for</span><select data-o="goal">${GOALS.map(([k, l]) => `<option value="${k}"${cfg.goal === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-            <label class="field num"><span>Min SPD</span><input type="number" min="0" max="400" step="0.1" data-o="minSpd" value="${cfg.minSpd}" placeholder="none"></label>
-            <label class="check"><input type="checkbox" data-o="allowWorn" ${cfg.allowWorn ? 'checked' : ''}> Use pieces other characters wear</label>
-            <label class="check"><input type="checkbox" data-o="fiveOnly" ${cfg.fiveOnly ? 'checked' : ''}> 5★ only</label>
-          </div>
-          <details class="opt-mains"><summary>Main stats (all allowed unless you pick some)</summary>
-            ${OPT_MAIN_SLOTS.map((sl) => `<div class="filters"><span class="muted small opt-slot">${SLOT_SHORT[sl]}</span>${mainsBySlot[sl].map((mn) => `<button class="pill toggle${(mains[sl] || []).includes(mn) ? ' on' : ''}" data-main="${esc(sl)}|${esc(mn)}">${esc(MAIN_SHORT(mn))}</button>`).join('')}</div>`).join('')}
-          </details>
-          <div class="opt-run"><button class="btn primary" data-run>Optimize</button>
-            <div class="opt-progress" hidden><div class="bar"><i></i></div><span class="muted small" data-phase></span><button class="btn ghost" data-cancel>Cancel</button></div></div>
-        </div>
-        <div class="opt-results" data-results><div class="muted small">Pick a goal and press Optimize.</div></div>
-      </div>`);
-    const box = m.el.querySelector('.opt-box');
-    const prog = box.querySelector('.opt-progress'), bar = prog.querySelector('i'), phase = prog.querySelector('[data-phase]');
-    const out = box.querySelector('[data-results]');
-    box.addEventListener('change', (e) => {
-      const k = e.target.dataset.o; if (!k) return;
-      cfg[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
-      save();
-    });
-    const fmtValue = (goal, v) => (goal === 'turns' ? `${Math.floor(v / 1e12)} turns · ${fmtBig(v % 1e12)} DMG` : `${fmtBig(v)} DMG`);
-    const delta = (goal, v, cur) => {
-      if (goal === 'turns') { const d = Math.floor(v / 1e12) - Math.floor(cur / 1e12); return d ? `${d > 0 ? '+' : ''}${d} turns` : `${cur ? `${((v % 1e12) / (cur % 1e12 || 1) * 100 - 100).toFixed(1)}%` : ''} DMG`; }
-      return cur ? `${v >= cur ? '+' : ''}${((v / cur - 1) * 100).toFixed(1)}%` : '';
+    const count = {};
+    for (const r of relics) count[r.set_id] = (count[r.set_id] || 0) + 1;
+    const ids = Object.keys(count).filter((id) => RELICS[id]);
+    return {
+      relics: ids.filter((id) => !RELICS[id].planar).sort((x, y) => count[y] - count[x]),
+      planars: ids.filter((id) => RELICS[id].planar).sort((x, y) => count[y] - count[x]),
+      count,
+      mains: Object.fromEntries(OPT_MAIN_SLOTS.map((sl) => [sl, [...new Set(relics.filter((r) => r.slot === sl).map((r) => r.mainstat))].sort()])),
     };
-    const pieceHtml = (p) => `<div class="opt-piece${p.wornBy ? ' worn' : ''}" title="${attr(esc(`${RELICS[p.set_id] ? RELICS[p.set_id].name : ''}${p.wornBy ? ` · worn by ${p.wornBy}` : ''}`))}">
-        <img src="${img.relic(String(p.set_id))}" alt="">
-        <div><b>${SLOT_SHORT[p.slot]}</b> <span class="muted">+${p.level}</span><div class="opt-main">${esc(MAIN_SHORT(p.mainstat))}</div>
-        <div class="opt-subs">${(p.substats || []).map((x) => `${SUB_SHORT[x.key] || x.key} ${x.key.endsWith('_') ? x.value.toFixed(1) + '%' : Math.round(x.value * 10) / 10}`).join(' · ')}</div>
-        ${p.wornBy ? `<div class="opt-worn">on ${esc(p.wornBy)}</div>` : ''}</div></div>`;
-    const setsHtml = (sl) => {
-      const nm = (id) => (RELICS[id] ? RELICS[id].name : '');
-      const parts = [];
-      if (sl.set1 && sl.set2 === 'same') parts.push(`4pc ${nm(sl.set1)}`);
-      else { if (sl.set1) parts.push(`2pc ${nm(sl.set1)}`); if (sl.set2 && sl.set2 !== 'same') parts.push(`2pc ${nm(sl.set2)}`); }
-      if (sl.planar) parts.push(nm(sl.planar));
-      return parts.length ? parts.map(esc).join(' · ') : 'No set bonuses';
-    };
-    let last = null;
-    function show(res) {
-      last = res;
-      out.innerHTML = `<div class="muted small">Current build: <b>${fmtValue(res.goal, res.currentValue)}</b></div>` + res.results.map((r, k) => `
-        <div class="card opt-result${k ? '' : ' best'}">
-          <div class="opt-head"><div><b>${k ? `#${k + 1}` : 'Best'}</b> · ${fmtValue(res.goal, r.value)} <span class="opt-delta">${delta(res.goal, r.value, res.currentValue)}</span>
-            <div class="muted small">SPD ${fmt(r.spd, 1)} · ${setsHtml(r.slot)}</div></div>
-            <button class="btn${k ? '' : ' primary'}" data-apply="${k}">Use this build</button></div>
-          <div class="opt-pieces">${r.pieces.map(pieceHtml).join('')}</div>
-        </div>`).join('');
-    }
-    box.addEventListener('click', async (e) => {
-      if (e.target.closest('[data-close]')) { if (running) running.cancel = true; return m.close(); }
-      if (e.target.closest('[data-cancel]')) { if (running) running.cancel = true; return; }
-      const mb = e.target.closest('[data-main]');
+  }
+  const pickedText = (ids) => (ids.length ? `Allowed: ${ids.map((id) => esc(RELICS[id] ? RELICS[id].name : id)).join(', ')}` : 'Any');
+  // Per-character filter controls (data-cf-* attributes carry the character id).
+  function filtersHtml(charId, f, inv) {
+    const chip = (kind, id) => `<button type="button" class="opt-set${(kind === 'r' ? f.relics : f.planars).includes(id) ? ' on' : ''}" data-cf-set="${charId}|${kind}|${id}" title="${attr(esc(RELICS[id].name))} (${inv.count[id]} pieces)"><img src="${img.relic(id)}" alt=""></button>`;
+    return `<div class="opt-filters">
+      <div class="opt-fgroup"><span class="muted small">4-piece relic set <i>(pick some to allow only those, or none for any mix)</i></span>
+        <div class="opt-sets">${inv.relics.map((id) => chip('r', id)).join('')}</div><div class="opt-picked" data-picked="${charId}|r">${pickedText(f.relics)}</div></div>
+      <div class="opt-fgroup"><span class="muted small">Planar set <i>(pick some to allow only those)</i></span>
+        <div class="opt-sets">${inv.planars.map((id) => chip('p', id)).join('')}</div><div class="opt-picked" data-picked="${charId}|p">${pickedText(f.planars)}</div></div>
+      <div class="opt-fgroup"><span class="muted small">Main stats <i>(pick some to allow only those)</i></span>
+        ${OPT_MAIN_SLOTS.map((sl) => `<div class="filters"><span class="muted small opt-slot">${SLOT_SHORT[sl]}</span>${inv.mains[sl].map((mn) => `<button type="button" class="pill toggle${(f.mains[sl] || []).includes(mn) ? ' on' : ''}" data-cf-main="${charId}|${esc(sl)}|${esc(mn)}">${esc(MAIN_SHORT(mn))}</button>`).join('')}</div>`).join('')}</div>
+      <label class="field num opt-minspd"><span>Min SPD</span><input type="number" min="0" max="400" step="0.1" data-cf-spd="${charId}" value="${f.minSpd}" placeholder="none"></label>
+    </div>`;
+  }
+  // Clicks / edits on filter controls inside an optimizer window.
+  function bindFilters(box, cfg) {
+    box.addEventListener('click', (e) => {
+      const sb = e.target.closest('[data-cf-set]');
+      if (sb) {
+        const [cid, kind, id] = sb.dataset.cfSet.split('|');
+        const list = charFilters(cfg, cid)[kind === 'r' ? 'relics' : 'planars'];
+        const at = list.indexOf(id);
+        if (at >= 0) list.splice(at, 1); else list.push(id);
+        sb.classList.toggle('on', at < 0);
+        const lbl = box.querySelector(`[data-picked="${cid}|${kind}"]`);
+        if (lbl) lbl.innerHTML = pickedText(list);
+        save();
+        return;
+      }
+      const mb = e.target.closest('[data-cf-main]');
       if (mb) {
-        const [sl, mn] = mb.dataset.main.split('|');
+        const [cid, sl, mn] = mb.dataset.cfMain.split('|');
+        const mains = charFilters(cfg, cid).mains;
         const list = mains[sl] || (mains[sl] = []);
         const at = list.indexOf(mn);
         if (at >= 0) list.splice(at, 1); else list.push(mn);
         mb.classList.toggle('on', at < 0);
         save();
-        return;
       }
+    });
+    box.addEventListener('input', (e) => { const sp = e.target.dataset.cfSpd; if (sp) { charFilters(cfg, sp).minSpd = e.target.value; save(); } });
+    box.addEventListener('change', (e) => {
+      const k = e.target.dataset.o; if (!k) return;
+      cfg[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.type === 'number' ? +e.target.value || 0 : e.target.value;
+      save();
+    });
+  }
+  const globalOptsHtml = (cfg, goals) => `
+    <label class="field"><span>Optimize for</span><select data-o="goal">${goals.map(([k, l]) => `<option value="${k}"${cfg.goal === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label class="field num"><span>Min relic level</span><input type="number" min="0" max="15" data-o="minLevel" value="${cfg.minLevel || 0}"></label>
+    <label class="check"><input type="checkbox" data-o="allowWorn" ${cfg.allowWorn ? 'checked' : ''}> Use pieces other characters wear</label>
+    <label class="check"><input type="checkbox" data-o="fiveOnly" ${cfg.fiveOnly ? 'checked' : ''}> 5★ only</label>`;
+  const progressHtml = (label) => `<div class="opt-run"><button class="btn primary" data-run>${label}</button>
+    <div class="opt-progress" hidden><div class="bar"><i></i></div><span class="muted small" data-phase></span><button class="btn ghost" data-cancel>Cancel</button></div></div>`;
+  const pieceHtml = (p) => `<div class="opt-piece${p.wornBy ? ' worn' : ''}" title="${attr(esc(`${RELICS[p.set_id] ? RELICS[p.set_id].name : ''}${p.wornBy ? ` · worn by ${p.wornBy}` : ''}`))}">
+      <img src="${img.relic(String(p.set_id))}" alt="">
+      <div><b>${SLOT_SHORT[p.slot]}</b> <span class="muted">+${p.level}</span><div class="opt-main">${esc(MAIN_SHORT(p.mainstat))}</div>
+      <div class="opt-subs">${(p.substats || []).map((x) => `${SUB_SHORT[x.key] || x.key} ${x.key.endsWith('_') ? x.value.toFixed(1) + '%' : Math.round(x.value * 10) / 10}`).join(' · ')}</div>
+      ${p.wornBy ? `<div class="opt-worn">on ${esc(p.wornBy)}</div>` : ''}</div></div>`;
+  function setsText(sl) {
+    const nm = (id) => (RELICS[id] ? RELICS[id].name : '');
+    const parts = [];
+    if (sl.set1 && sl.set2 === 'same') parts.push(`4pc ${nm(sl.set1)}`);
+    else { if (sl.set1) parts.push(`2pc ${nm(sl.set1)}`); if (sl.set2 && sl.set2 !== 'same') parts.push(`2pc ${nm(sl.set2)}`); }
+    if (sl.planar) parts.push(nm(sl.planar));
+    return parts.length ? parts.map(esc).join(' · ') : 'No set bonuses';
+  }
+  function applyBuild(s, built, pieces) {
+    for (const k of ['relicStats', 'set1', 'set2', 'planar', 'boots', 'bootsSpd', 'subSpd', 'errRope', 'errRopeValue']) s[k] = built[k];
+    s.statTotals = undefined;
+    s.spd = round3(panelStats({ ...s, spd: '', spdAuto: true, override: '' }).panel);
+    s.spdAuto = false;
+    s.fromAccount = false;
+    s.optimizedPieces = pieces.map((p) => p._uid);
+  }
+  // Runs an optimizer job with the shared progress bar; resolves to its result or null.
+  async function withProgress(box, job) {
+    const prog = box.querySelector('.opt-progress'), bar = prog.querySelector('i'), phase = prog.querySelector('[data-phase]');
+    const out = box.querySelector('[data-results]'), runBtn = box.querySelector('[data-run]');
+    const ctl = { cancel: false };
+    box.querySelector('[data-cancel]').onclick = () => { ctl.cancel = true; };
+    box.ctl = ctl;
+    runBtn.disabled = true; prog.hidden = false; bar.style.width = '0%'; phase.textContent = 'Starting…'; out.innerHTML = '';
+    try {
+      return await job({
+        onProgress: (p) => { bar.style.width = `${Math.min(100, (p.done / p.total) * 100).toFixed(1)}%`; phase.textContent = `${p.phase}… ${Math.round(Math.min(1, p.done / p.total) * 100)}%`; },
+        isCancelled: () => ctl.cancel,
+      });
+    } catch (err) {
+      out.innerHTML = `<div class="${err.message === 'cancelled' ? 'muted small' : 'warn'}">${err.message === 'cancelled' ? 'Cancelled.' : esc(err.message)}</div>`;
+      return null;
+    } finally {
+      box.ctl = null; runBtn.disabled = false; prog.hidden = true;
+    }
+  }
+
+  function openOptimizer(slotIdx) {
+    const s = state.slots[slotIdx];
+    const ch = CHARS[s.charId];
+    const cfg = optCfg(), f = charFilters(cfg, s.charId), inv = inventorySets();
+    const relics = (Account.data && Account.data.export.relics) || [];
+    const m = window.HSRTools.openModal(`
+      <div class="card modal-box opt-box" role="dialog" aria-label="Optimize relics">
+        <div class="modal-head">
+          <div class="top"><h3>Optimize relics · ${esc(ch.name)}</h3><button class="btn ghost" data-close>Close</button></div>
+          <p class="muted small">Searches your ${relics.length} imported relics for the best 6 pieces, scoring each build with the full battle sim using your current team and battle settings (${esc(MODES[state.mode] ? MODES[state.mode].name : '')}, ${state.showCycles || 4} cycles). Light cone, eidolon and teammates stay as they are.</p>
+          <div class="opt-controls">${globalOptsHtml(cfg, GOALS)}</div>
+          <details class="opt-more" open><summary>Filters for ${esc(ch.name)}</summary>${filtersHtml(s.charId, f, inv)}</details>
+          ${progressHtml('Optimize')}
+        </div>
+        <div class="opt-results" data-results><div class="muted small">Pick a goal and press Optimize.</div></div>
+      </div>`);
+    const box = m.el.querySelector('.opt-box');
+    bindFilters(box, cfg);
+    const out = box.querySelector('[data-results]');
+    const fmtValue = (goal, v) => (goal === 'turns' ? `${Math.floor(v / 1e12)} turns · ${fmtBig(v % 1e12)} DMG` : `${fmtBig(v)} DMG`);
+    const delta = (goal, v, cur) => {
+      if (goal === 'turns') { const d = Math.floor(v / 1e12) - Math.floor(cur / 1e12); return d ? `${d > 0 ? '+' : ''}${d} turns` : ''; }
+      return cur ? `${v >= cur ? '+' : ''}${((v / cur - 1) * 100).toFixed(1)}%` : '';
+    };
+    let last = null;
+    box.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-close]')) { if (box.ctl) box.ctl.cancel = true; return m.close(); }
       const ap = e.target.closest('[data-apply]');
-      if (ap && last) {
-        const r = last.results[+ap.dataset.apply];
-        const keep = ['relicStats', 'set1', 'set2', 'planar', 'boots', 'bootsSpd', 'subSpd', 'errRope', 'errRopeValue'];
-        for (const k of keep) s[k] = r.slot[k];
-        s.statTotals = undefined;
-        s.spd = round3(panelStats({ ...s, spd: '', spdAuto: true, override: '' }).panel);
-        s.spdAuto = false;
-        s.fromAccount = false;
-        s.optimizedPieces = r.pieces.map((p) => p._uid);
-        m.close();
-        changed(true);
+      if (ap && last) { const r = last.results[+ap.dataset.apply]; applyBuild(s, r.slot, r.pieces); m.close(); changed(true); return; }
+      if (!e.target.closest('[data-run]') || box.ctl) return;
+      const res = await withProgress(box, (hooks) => window.AVOptimizer.run({
+        state: JSON.parse(JSON.stringify(state)), slotIdx, goal: cfg.goal, allowWorn: cfg.allowWorn, minRarity: cfg.fiveOnly ? 5 : 1, minLevel: +cfg.minLevel || 0,
+        minSpd: +f.minSpd || 0, mains: f.mains, relicSetIds: f.relics, planarIds: f.planars, ...hooks,
+      }));
+      if (!res) return;
+      last = res;
+      out.innerHTML = `<div class="muted small">Current build: <b>${fmtValue(res.goal, res.currentValue)}</b></div>` + res.results.map((r, k) => `
+        <div class="card opt-result${k ? '' : ' best'}">
+          <div class="opt-head"><div><b>${k ? `#${k + 1}` : 'Best'}</b> · ${fmtValue(res.goal, r.value)} <span class="opt-delta">${delta(res.goal, r.value, res.currentValue)}</span>
+            <div class="muted small">SPD ${fmt(r.spd, 1)} · ${setsText(r.slot)}</div></div>
+            <button class="btn${k ? '' : ' primary'}" data-apply="${k}">Use this build</button></div>
+          <div class="opt-pieces">${r.pieces.map(pieceHtml).join('')}</div>
+        </div>`).join('');
+    });
+  }
+
+  // Whole-team optimizer: priority order, per-member filters, no relic used twice.
+  const TEAM_GOALS = [['team', 'Team damage'], ['own', 'Each character\'s own damage (in priority order)']];
+  function openTeamOptimizer() {
+    const cfg = optCfg(), inv = inventorySets();
+    if (!['team', 'own'].includes(cfg.teamGoal)) cfg.teamGoal = 'team';
+    const filled = state.slots.map((sl, i) => [sl, i]).filter(([sl]) => sl && CHARS[sl.charId]);
+    let order = (cfg.teamOrder || []).filter((i) => filled.some(([, k]) => k === i));
+    filled.forEach(([, i]) => { if (!order.includes(i)) order.push(i); });
+    const m = window.HSRTools.openModal(`
+      <div class="card modal-box opt-box" role="dialog" aria-label="Optimize team relics">
+        <div class="modal-head">
+          <div class="top"><h3>Optimize team relics</h3><button class="btn ghost" data-close>Close</button></div>
+          <p class="muted small">Finds relics for every team member from your inventory without giving the same piece to two characters. Members go in priority order (earlier ones get first pick), then everyone is re-checked against the others' final builds. Each build is scored with the full battle sim.</p>
+          <div class="opt-controls">
+            <label class="field"><span>Optimize for</span><select data-team-goal>${TEAM_GOALS.map(([k, l]) => `<option value="${k}"${cfg.teamGoal === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+            <label class="field num"><span>Min relic level</span><input type="number" min="0" max="15" data-o="minLevel" value="${cfg.minLevel || 0}"></label>
+            <label class="check"><input type="checkbox" data-o="allowWorn" ${cfg.allowWorn ? 'checked' : ''}> Use pieces characters outside the team wear</label>
+            <label class="check"><input type="checkbox" data-o="fiveOnly" ${cfg.fiveOnly ? 'checked' : ''}> 5★ only</label>
+          </div>
+          <div class="opt-members" data-members></div>
+          ${progressHtml('Optimize team')}
+        </div>
+        <div class="opt-results" data-results><div class="muted small">Set the priority and filters, then press Optimize team.</div></div>
+      </div>`);
+    const box = m.el.querySelector('.opt-box');
+    bindFilters(box, cfg);
+    const membersEl = box.querySelector('[data-members]');
+    const drawMembers = () => {
+      membersEl.innerHTML = order.map((i, k) => {
+        const sl = state.slots[i], f = charFilters(cfg, sl.charId);
+        const active = f.relics.length + f.planars.length + Object.values(f.mains).reduce((a, l) => a + l.length, 0) + (f.minSpd ? 1 : 0);
+        return `<details class="opt-member"><summary><span class="opt-rank">${k + 1}</span><img src="${img.avatar(sl.charId)}" alt=""><b>${esc(CHARS[sl.charId].name)}</b>
+          <span class="muted small">${active ? `${active} filter${active > 1 ? 's' : ''}` : 'no filters'}</span>
+          <span class="opt-move"><button type="button" class="btn ghost" data-move="${k}|-1" ${k ? '' : 'disabled'} title="Higher priority">↑</button><button type="button" class="btn ghost" data-move="${k}|1" ${k < order.length - 1 ? '' : 'disabled'} title="Lower priority">↓</button></span></summary>
+          ${filtersHtml(sl.charId, f, inv)}</details>`;
+      }).join('');
+    };
+    drawMembers();
+    box.querySelector('[data-team-goal]').onchange = (e) => { cfg.teamGoal = e.target.value; save(); };
+    const out = box.querySelector('[data-results]');
+    let last = null;
+    box.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-close]')) { if (box.ctl) box.ctl.cancel = true; return m.close(); }
+      const mv = e.target.closest('[data-move]');
+      if (mv) {
+        e.preventDefault();
+        const [k, d] = mv.dataset.move.split('|').map(Number);
+        [order[k], order[k + d]] = [order[k + d], order[k]];
+        cfg.teamOrder = order.slice(); save(); drawMembers();
         return;
       }
-      if (!e.target.closest('[data-run]') || running) return;
-      running = { cancel: false };
-      const runBtn = box.querySelector('[data-run]');
-      runBtn.disabled = true; prog.hidden = false; bar.style.width = '0%'; phase.textContent = 'Starting…';
-      out.innerHTML = '';
-      try {
-        const res = await window.AVOptimizer.run({
-          state: JSON.parse(JSON.stringify(state)), slotIdx, goal: cfg.goal, allowWorn: cfg.allowWorn,
-          minSpd: +cfg.minSpd || 0, mains, minRarity: cfg.fiveOnly ? 5 : 1,
-          onProgress: (p) => { bar.style.width = `${Math.min(100, (p.done / p.total) * 100).toFixed(1)}%`; phase.textContent = `${p.phase}… ${Math.round(Math.min(1, p.done / p.total) * 100)}%`; },
-          isCancelled: () => running.cancel,
-        });
-        show(res);
-      } catch (err) {
-        out.innerHTML = `<div class="${err.message === 'cancelled' ? 'muted small' : 'warn'}">${err.message === 'cancelled' ? 'Cancelled.' : esc(err.message)}</div>`;
-      } finally {
-        running = null; runBtn.disabled = false; prog.hidden = true;
+      if (e.target.closest('[data-apply-team]') && last) {
+        last.members.forEach((mm) => applyBuild(state.slots[mm.slotIdx], mm.slot, mm.pieces));
+        m.close(); changed(true);
+        return;
       }
+      if (!e.target.closest('[data-run]') || box.ctl) return;
+      const res = await withProgress(box, (hooks) => window.AVOptimizer.runTeam({
+        state: JSON.parse(JSON.stringify(state)), goal: cfg.teamGoal, allowWorn: cfg.allowWorn, minRarity: cfg.fiveOnly ? 5 : 1, minLevel: +cfg.minLevel || 0,
+        members: order.map((i) => ({ slotIdx: i, filters: charFilters(cfg, state.slots[i].charId) })), ...hooks,
+      }));
+      if (!res) return;
+      last = res;
+      const pct = (a, b) => (b ? `${a >= b ? '+' : ''}${((a / b - 1) * 100).toFixed(1)}%` : '');
+      out.innerHTML = `<div class="opt-head card opt-result best"><div><b>Team damage</b> · ${fmtBig(res.teamBefore)} → <b>${fmtBig(res.teamAfter)}</b> <span class="opt-delta">${pct(res.teamAfter, res.teamBefore)}</span>
+          <div class="muted small">No relic is used by two characters.</div></div><button class="btn primary" data-apply-team>Use these builds</button></div>`
+        + res.members.map((mm) => `<div class="card opt-result">
+          <div class="opt-head"><div><b>${esc(CHARS[state.slots[mm.slotIdx].charId].name)}</b> · ${fmtBig(mm.dmgBefore)} → ${fmtBig(mm.dmgAfter)} DMG <span class="opt-delta">${pct(mm.dmgAfter, mm.dmgBefore)}</span>
+            <div class="muted small">SPD ${fmt(mm.spd, 1)} · ${setsText(mm.slot)}</div></div></div>
+          <div class="opt-pieces">${mm.pieces.map(pieceHtml).join('')}</div></div>`).join('');
     });
   }
 

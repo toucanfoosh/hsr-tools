@@ -26,13 +26,12 @@
   }
 
   class Sim {
-    constructor({ breaks = false, elationAttacks = true, firstCycle, cycleLen, maxAV, enemies = 1, enemySpd = 120, enemyHits = 1, enemyLevel = 95, enemyRes = 0.2, enemyResEl = null, enemyBroken = false, enemyToughness = 160 }) {
+    constructor({ breaks = false, elationAttacks = true, firstCycle, cycleLen, maxAV, enemies = 1, enemySpd = 120, enemyHits = 1, enemyLevel = 95, enemyRes = 0.2, enemyBroken = false, enemyToughness = 160 }) {
       this.breaks = breaks; // Weakness Break / Toughness (off unless the team setting turns it on)
       this.enemyToughness = enemyToughness;
       this.elationAttacks = elationAttacks;
       this.enemyLevel = enemyLevel;
       this.enemyRes = enemyRes;
-      this.enemyResEl = enemyResEl; // per-Type RES of a preset enemy (weak Types 0%)
       this.enemyBroken = enemyBroken;
       this.enemyMods = [];
       this.damageLog = [];
