@@ -4,7 +4,7 @@ A small collection of Honkai: Star Rail tools. It's a static site with no build 
 
 ## Tools
 
-### AV Calculator
+### Battle Simulator
 Pick up to 4 characters and set their eidolon, light cone (with superimposition), relic sets, planar ornament and SPD substats. You then get:
 
 - the SPD on the character screen and the base AV for each character

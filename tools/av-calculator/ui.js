@@ -1,4 +1,4 @@
-// AV Calculator UI: team builder, character picker, timeline chart and tables.
+// Battle Simulator UI: team builder, character picker, timeline chart and tables.
 (function () {
   const { CDN, esc } = window.HSRTools;
   const { MODES, CHARS, LCS, RELICS, simulate, panelStats } = window.AVCalc;
@@ -114,7 +114,7 @@
       state.showCycles = 4;
     }
     root.innerHTML = `
-      <h1 class="tool-title">AV Calculator</h1>
+      <h1 class="tool-title">Battle Simulator</h1>
       <p class="tool-sub">See when each character acts, turn by turn.</p>
       <div class="card mode-bar" id="mode-bar"></div>
       <div class="section">
@@ -273,8 +273,10 @@
 
         <div class="field"><span>Relics &amp; planar</span>
           <div class="relic-tiles">
-            ${relicTile(i, 'set1', s.set1, s.set1 ? (s.set2 === 'same' ? '4pc' : '2pc') : 'Set')}
-            ${s.set1 ? relicTile(i, 'set2', s.set2 !== 'same' && s.set2, s.set2 === 'same' ? '+2pc' : '2pc') : ''}
+            ${s.set1 && s.set2 === 'same'
+              // A full 4-piece: one tile, with a small + on its corner to split it into 2pc + 2pc.
+              ? `<div class="relic-slot">${relicTile(i, 'set1', s.set1, '4pc')}<button type="button" class="relic-add" data-action="gear" data-kind="set2" data-slot="${i}" title="Add a 2nd set (2-piece + 2-piece)" aria-label="Add a 2nd relic set">+</button></div>`
+              : `${relicTile(i, 'set1', s.set1, s.set1 ? '2pc' : 'Set')}${s.set1 ? relicTile(i, 'set2', s.set2, '2pc') : ''}`}
             ${relicTile(i, 'planar', s.planar, 'Planar')}
           </div>
         </div>
@@ -1215,5 +1217,5 @@
   dl.innerHTML = PATTERNS.map((p) => `<option value="${p}">`).join('');
   document.body.appendChild(dl);
 
-  window.HSRTools.register({ id: 'av-calculator', title: 'AV Calculator', mount });
+  window.HSRTools.register({ id: 'av-calculator', title: 'Battle Simulator', mount });
 })();
