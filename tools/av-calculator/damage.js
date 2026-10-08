@@ -147,7 +147,8 @@
     em.vuln += type ? (sim.enemyMods || []).reduce((a, m) => a + ((m.vulnType && m.vulnType[type]) || 0), 0) : 0;
     const L = sim.enemyLevel || 95;
     const defMult = 100 / ((L + 20) * Math.max(0, 1 - em.def - st.defIgnore) + 100);
-    const resMult = Math.min(2, Math.max(0.1, 1 - ((sim.enemyRes == null ? 0.2 : sim.enemyRes) - st.resPen - em.res)));
+    const baseRes = sim.enemyResEl && st.el && sim.enemyResEl[st.el] != null ? sim.enemyResEl[st.el] : (sim.enemyRes == null ? 0.2 : sim.enemyRes);
+    const resMult = Math.min(2, Math.max(0.1, 1 - (baseRes - st.resPen - em.res)));
     const vuln = 1 + em.vuln + (st.vulnSelf || 0);
     const broken = sim.enemyBroken ? 1 : 0.9 + 0.1 * (sim.brokenShare ? sim.brokenShare() : 0);
     const crit = 1 + Math.min(1, Math.max(0, st.cr)) * Math.max(0, st.cd);

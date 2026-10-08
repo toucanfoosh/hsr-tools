@@ -9,6 +9,7 @@
   const PATHS = ['Destruction', 'The Hunt', 'Erudition', 'Harmony', 'Nihility', 'Preservation', 'Abundance', 'Remembrance', 'Elation'];
   const ELEMENTS = ['Physical', 'Fire', 'Ice', 'Thunder', 'Wind', 'Quantum', 'Imaginary'];
   const PATTERNS = ['S', 'B', 'SB', 'SSB', 'BBS', 'BS'];
+  const PRESET_IDS = () => new Set(((window.HSR_ENEMY_PRESETS && window.HSR_ENEMY_PRESETS.presets) || []).map((p) => p.id));
   const ACTION_PRESETS = [['S', 'Skill'], ['B', 'Basic ATK'], ['SB', 'Skill → Basic'],
     ['SSB', 'Skill ×2 → Basic'], ['BBS', 'Basic ×2 → Skill']];
   // Characters who are normally played with Basic ATKs.
@@ -189,6 +190,8 @@
 
   function renderModeBar() {
     const bar = root.querySelector('#mode-bar');
+    const PRESETS = (window.HSR_ENEMY_PRESETS && window.HSR_ENEMY_PRESETS.presets) || [];
+    const preset = PRESETS.find((p) => p.id === state.enemyPreset);
     bar.innerHTML = `
       <label class="field mode-select"><span>Game mode</span>
         <select data-g="mode">${Object.entries(MODES).map(([k, m]) =>
@@ -196,12 +199,17 @@
         </select></label>
       <label class="field num"><span>Cycles shown</span>
         <input type="number" min="1" max="60" data-g="showCycles" value="${state.showCycles || 4}"></label>
-      <label class="field num"><span class="label-row">Enemies ${infoIcon('Enemies take turns on the timeline. Each enemy turn hits your team (spread by taunt), triggering counters and on-hit effects. Energy from being hit is not counted. The count also sets how many targets AoE / Blast abilities hit.')}</span>
+      <label class="field enemy-select"><span class="label-row">Enemy ${infoIcon('Sample enemies are the current Anomaly Arbitration bosses (updated from the wiki): their SPD (scaled for level), Toughness, level and per-Type RES (0% for their Weaknesses) replace the manual enemy settings. Mechanics like shields, phases and summons are not simulated.')}</span>
+        <select data-g="enemyPreset">
+          <option value=""${!state.enemyPreset ? ' selected' : ''}>Manual settings</option>
+          <option value="none"${state.enemyPreset === 'none' ? ' selected' : ''}>No enemy</option>
+          ${PRESETS.map((p) => `<option value="${p.id}"${state.enemyPreset === p.id ? ' selected' : ''}>${esc(p.label)}</option>`).join('')}
+        </select></label>
+      ${preset ? `<div class="field enemy-info"><span>${esc(preset.name)}</span><div class="muted small">Lv. ${preset.level} · SPD ${fmt(preset.spd, 1)} · Toughness ${preset.toughness}${preset.count > 1 ? ` · ${preset.count} parts` : ''}<br>Weak: ${preset.weak.map((w) => EL_NAME[w] || w).join(', ')}</div></div>` : ''}
+      ${state.enemyPreset ? '' : `      <label class="field num"><span class="label-row">Enemies ${infoIcon('Enemies take turns on the timeline. Each enemy turn hits your team (spread by taunt), triggering counters and on-hit effects. Energy from being hit is not counted. The count also sets how many targets AoE / Blast abilities hit.')}</span>
         <input type="number" min="0" max="5" data-g="enemies" value="${state.enemies == null ? 2 : state.enemies}"></label>
       <label class="field num"><span>Enemy SPD</span>
         <input type="number" min="1" max="500" data-g="enemySpd" value="${state.enemySpd || 120}"></label>
-      <label class="field num"><span>Hits / turn</span>
-        <input type="number" min="0" max="5" data-g="enemyHits" value="${state.enemyHits == null ? 1 : state.enemyHits}"></label>
       ${state.breaks ? `<label class="field num"><span class="label-row">Toughness ${infoIcon('Each enemy\'s Toughness (enemies are assumed weak to your team). At 0 they are Weakness Broken: Break DMG, their action is delayed, they take full DMG and Super Break applies until their next turn.')}</span>
         <input type="number" min="10" max="2000" data-g="enemyToughness" value="${state.enemyToughness || 160}"></label>` : ''}
 
@@ -209,6 +217,9 @@
         <input type="number" min="1" max="120" data-g="enemyLevel" value="${state.enemyLevel || 95}"></label>
       <label class="field num"><span class="label-row">Enemy RES % ${infoIcon('The enemies\' RES to your damage types. 20% is the default for most enemies; 0% if they are weak to your damage type.')}</span>
         <input type="number" min="-100" max="100" data-g="enemyRes" value="${state.enemyRes == null ? 20 : state.enemyRes}"></label>
+`}
+      <label class="field num"><span>Hits / turn</span>
+        <input type="number" min="0" max="5" data-g="enemyHits" value="${state.enemyHits == null ? 1 : state.enemyHits}"></label>
       <label class="check elation-attacks"><input type="checkbox" data-g="breaks" ${state.breaks ? 'checked' : ''}>
         Weakness Break ${infoIcon('Off: enemies are never Weakness Broken (no Break / Super Break DMG, no break delays). Turn on for break teams (Firefly, Rappa, Boothill, The Dahlia...).')}</label>
       ${state.slots.some((x) => x && CHARS[x.charId] && CHARS[x.charId].combat.elationPid) ? `
@@ -532,7 +543,8 @@
     if (t.dataset.g) {
       const v = t.type === 'number' ? t.value : t.value;
       state[t.dataset.g] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (v === '' ? '' : +v) : v;
-      if (t.dataset.g === 'mode' || t.dataset.g === 'breaks') renderModeBar();
+      if (t.dataset.g === 'enemyPreset' && PRESET_IDS().has(t.value)) state.mode = 'aa'; // the bosses are Anomaly Arbitration fights
+      if (t.dataset.g === 'mode' || t.dataset.g === 'breaks' || t.dataset.g === 'enemyPreset') renderModeBar();
       changed(false);
       return;
     }
@@ -936,7 +948,7 @@
     }).join('');
     const noRelics = r.units.filter(({ unit }) => (!unit.cfg.relicStats || !Object.keys(unit.cfg.relicStats).length) && !(unit.cfg.statTotals && Object.keys(unit.cfg.statTotals).length)).map(({ stats }) => shortName(stats.ch.name));
     return `<div class="section">
-      <div class="section-head"><h2>Damage</h2><span class="muted small">Estimate · ${r.sim.enemyCount} enem${r.sim.enemyCount === 1 ? 'y' : 'ies'}, Lv. ${r.sim.enemyLevel}, ${Math.round(r.sim.enemyRes * 100)}% RES ${infoIcon(DMG_NOTE)}</span></div>
+      <div class="section-head"><h2>Damage</h2><span class="muted small">Estimate · ${r.sim.enemyCount} enem${r.sim.enemyCount === 1 ? 'y' : 'ies'}, Lv. ${r.sim.enemyLevel}, ${r.sim.enemyResEl ? 'RES by Type (sample enemy)' : `${Math.round(r.sim.enemyRes * 100)}% RES`} ${infoIcon(DMG_NOTE)}</span></div>
       <div class="card dmg-card">
         <div class="dmg-totals">
           <div><b>${fmtBig(total)}</b><span>Team damage</span></div>
