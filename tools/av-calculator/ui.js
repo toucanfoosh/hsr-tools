@@ -296,7 +296,7 @@
 ` : ''}
         </div>
 
-        <div class="field"><span>Relics &amp; planar</span>
+        <div class="field"><span class="label-row relic-head">Relics &amp; planar${Account.data ? `<button type="button" class="link-btn" data-action="optimize" data-slot="${i}" title="Find the best relics from your inventory for this character">Optimize</button>` : ''}</span>
           <div class="relic-tiles">
             ${s.set1 && s.set2 === 'same'
               // A full 4-piece: one tile, with a small + on its corner to split it into 2pc + 2pc.
@@ -523,6 +523,7 @@
       }
       case 'spdAuto': ev.preventDefault(); state.slots[i].spdAuto = true; state.slots[i].spd = ''; changed(true); break;
       case 'gear': ev.stopPropagation(); openGearPicker(i, t.dataset.kind); break;
+      case 'optimize': ev.stopPropagation(); openOptimizer(i); break;
       case 'sync': ev.stopPropagation(); if (applyAccount(state.slots[i])) changed(true); break;
       case 'demo': state = JSON.parse(JSON.stringify(DEMO)); renderModeBar(); changed(true); break;
       case 'clear': state.slots = [null, null, null, null]; changed(true); break;
@@ -1275,6 +1276,125 @@
       tip.style.top = `${e.clientY + 14}px`;
     };
     host.onmouseleave = () => { tip.hidden = true; };
+  }
+
+  // ---------------------------------------------------------------- relic optimizer
+  const GOALS = [['dmg', 'This character\'s damage'], ['team', 'Team damage'], ['turns', 'This character\'s turns']];
+  const SLOT_SHORT = { Head: 'Head', Hands: 'Hands', Body: 'Body', Feet: 'Feet', 'Planar Sphere': 'Sphere', 'Link Rope': 'Rope' };
+  const MAIN_SHORT = (m) => m.replace(' DMG Boost', ' DMG').replace('Energy Regeneration Rate', 'Energy Regen').replace('Outgoing Healing Boost', 'Healing');
+  const SUB_SHORT = { HP: 'HP', ATK: 'ATK', DEF: 'DEF', HP_: 'HP', ATK_: 'ATK', DEF_: 'DEF', 'CRIT Rate_': 'CR', 'CRIT DMG_': 'CD', 'Effect Hit Rate_': 'EHR', 'Effect RES_': 'RES', 'Break Effect_': 'BE', SPD: 'SPD' };
+  const OPT_MAIN_SLOTS = ['Body', 'Feet', 'Planar Sphere', 'Link Rope'];
+
+  function openOptimizer(slotIdx) {
+    const s = state.slots[slotIdx];
+    const ch = CHARS[s.charId];
+    const relics = (Account.data && Account.data.export.relics) || [];
+    const mainsBySlot = Object.fromEntries(OPT_MAIN_SLOTS.map((sl) => [sl, [...new Set(relics.filter((r) => r.slot === sl).map((r) => r.mainstat))].sort()]));
+    const cfg = state.optimizer || (state.optimizer = { goal: 'dmg', allowWorn: true, minSpd: '', fiveOnly: true, mains: {} });
+    const mains = cfg.mains[s.charId] || (cfg.mains[s.charId] = {});
+    let running = null;
+    const m = window.HSRTools.openModal(`
+      <div class="card modal-box opt-box" role="dialog" aria-label="Optimize relics">
+        <div class="modal-head">
+          <div class="top"><h3>Optimize relics · ${esc(ch.name)}</h3><button class="btn ghost" data-close>Close</button></div>
+          <p class="muted small">Searches your ${relics.length} imported relics for the best 6 pieces, scoring each build with the full battle sim using your current team and battle settings (${esc(MODES[state.mode] ? MODES[state.mode].name : '')}, ${state.showCycles || 4} cycles${state.enemyPreset && state.enemyPreset !== 'none' ? ', sample enemy' : ''}). Light cone, eidolon and teammates stay as they are.</p>
+          <div class="opt-controls">
+            <label class="field"><span>Optimize for</span><select data-o="goal">${GOALS.map(([k, l]) => `<option value="${k}"${cfg.goal === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+            <label class="field num"><span>Min SPD</span><input type="number" min="0" max="400" step="0.1" data-o="minSpd" value="${cfg.minSpd}" placeholder="none"></label>
+            <label class="check"><input type="checkbox" data-o="allowWorn" ${cfg.allowWorn ? 'checked' : ''}> Use pieces other characters wear</label>
+            <label class="check"><input type="checkbox" data-o="fiveOnly" ${cfg.fiveOnly ? 'checked' : ''}> 5★ only</label>
+          </div>
+          <details class="opt-mains"><summary>Main stats (all allowed unless you pick some)</summary>
+            ${OPT_MAIN_SLOTS.map((sl) => `<div class="filters"><span class="muted small opt-slot">${SLOT_SHORT[sl]}</span>${mainsBySlot[sl].map((mn) => `<button class="pill toggle${(mains[sl] || []).includes(mn) ? ' on' : ''}" data-main="${esc(sl)}|${esc(mn)}">${esc(MAIN_SHORT(mn))}</button>`).join('')}</div>`).join('')}
+          </details>
+          <div class="opt-run"><button class="btn primary" data-run>Optimize</button>
+            <div class="opt-progress" hidden><div class="bar"><i></i></div><span class="muted small" data-phase></span><button class="btn ghost" data-cancel>Cancel</button></div></div>
+        </div>
+        <div class="opt-results" data-results><div class="muted small">Pick a goal and press Optimize.</div></div>
+      </div>`);
+    const box = m.el.querySelector('.opt-box');
+    const prog = box.querySelector('.opt-progress'), bar = prog.querySelector('i'), phase = prog.querySelector('[data-phase]');
+    const out = box.querySelector('[data-results]');
+    box.addEventListener('change', (e) => {
+      const k = e.target.dataset.o; if (!k) return;
+      cfg[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+      save();
+    });
+    const fmtValue = (goal, v) => (goal === 'turns' ? `${Math.floor(v / 1e12)} turns · ${fmtBig(v % 1e12)} DMG` : `${fmtBig(v)} DMG`);
+    const delta = (goal, v, cur) => {
+      if (goal === 'turns') { const d = Math.floor(v / 1e12) - Math.floor(cur / 1e12); return d ? `${d > 0 ? '+' : ''}${d} turns` : `${cur ? `${((v % 1e12) / (cur % 1e12 || 1) * 100 - 100).toFixed(1)}%` : ''} DMG`; }
+      return cur ? `${v >= cur ? '+' : ''}${((v / cur - 1) * 100).toFixed(1)}%` : '';
+    };
+    const pieceHtml = (p) => `<div class="opt-piece${p.wornBy ? ' worn' : ''}" title="${attr(esc(`${RELICS[p.set_id] ? RELICS[p.set_id].name : ''}${p.wornBy ? ` · worn by ${p.wornBy}` : ''}`))}">
+        <img src="${img.relic(String(p.set_id))}" alt="">
+        <div><b>${SLOT_SHORT[p.slot]}</b> <span class="muted">+${p.level}</span><div class="opt-main">${esc(MAIN_SHORT(p.mainstat))}</div>
+        <div class="opt-subs">${(p.substats || []).map((x) => `${SUB_SHORT[x.key] || x.key} ${x.key.endsWith('_') ? x.value.toFixed(1) + '%' : Math.round(x.value * 10) / 10}`).join(' · ')}</div>
+        ${p.wornBy ? `<div class="opt-worn">on ${esc(p.wornBy)}</div>` : ''}</div></div>`;
+    const setsHtml = (sl) => {
+      const nm = (id) => (RELICS[id] ? RELICS[id].name : '');
+      const parts = [];
+      if (sl.set1 && sl.set2 === 'same') parts.push(`4pc ${nm(sl.set1)}`);
+      else { if (sl.set1) parts.push(`2pc ${nm(sl.set1)}`); if (sl.set2 && sl.set2 !== 'same') parts.push(`2pc ${nm(sl.set2)}`); }
+      if (sl.planar) parts.push(nm(sl.planar));
+      return parts.length ? parts.map(esc).join(' · ') : 'No set bonuses';
+    };
+    let last = null;
+    function show(res) {
+      last = res;
+      out.innerHTML = `<div class="muted small">Current build: <b>${fmtValue(res.goal, res.currentValue)}</b></div>` + res.results.map((r, k) => `
+        <div class="card opt-result${k ? '' : ' best'}">
+          <div class="opt-head"><div><b>${k ? `#${k + 1}` : 'Best'}</b> · ${fmtValue(res.goal, r.value)} <span class="opt-delta">${delta(res.goal, r.value, res.currentValue)}</span>
+            <div class="muted small">SPD ${fmt(r.spd, 1)} · ${setsHtml(r.slot)}</div></div>
+            <button class="btn${k ? '' : ' primary'}" data-apply="${k}">Use this build</button></div>
+          <div class="opt-pieces">${r.pieces.map(pieceHtml).join('')}</div>
+        </div>`).join('');
+    }
+    box.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-close]')) { if (running) running.cancel = true; return m.close(); }
+      if (e.target.closest('[data-cancel]')) { if (running) running.cancel = true; return; }
+      const mb = e.target.closest('[data-main]');
+      if (mb) {
+        const [sl, mn] = mb.dataset.main.split('|');
+        const list = mains[sl] || (mains[sl] = []);
+        const at = list.indexOf(mn);
+        if (at >= 0) list.splice(at, 1); else list.push(mn);
+        mb.classList.toggle('on', at < 0);
+        save();
+        return;
+      }
+      const ap = e.target.closest('[data-apply]');
+      if (ap && last) {
+        const r = last.results[+ap.dataset.apply];
+        const keep = ['relicStats', 'set1', 'set2', 'planar', 'boots', 'bootsSpd', 'subSpd', 'errRope', 'errRopeValue'];
+        for (const k of keep) s[k] = r.slot[k];
+        s.statTotals = undefined;
+        s.spd = round3(panelStats({ ...s, spd: '', spdAuto: true, override: '' }).panel);
+        s.spdAuto = false;
+        s.fromAccount = false;
+        s.optimizedPieces = r.pieces.map((p) => p._uid);
+        m.close();
+        changed(true);
+        return;
+      }
+      if (!e.target.closest('[data-run]') || running) return;
+      running = { cancel: false };
+      const runBtn = box.querySelector('[data-run]');
+      runBtn.disabled = true; prog.hidden = false; bar.style.width = '0%'; phase.textContent = 'Starting…';
+      out.innerHTML = '';
+      try {
+        const res = await window.AVOptimizer.run({
+          state: JSON.parse(JSON.stringify(state)), slotIdx, goal: cfg.goal, allowWorn: cfg.allowWorn,
+          minSpd: +cfg.minSpd || 0, mains, minRarity: cfg.fiveOnly ? 5 : 1,
+          onProgress: (p) => { bar.style.width = `${Math.min(100, (p.done / p.total) * 100).toFixed(1)}%`; phase.textContent = `${p.phase}… ${Math.round(Math.min(1, p.done / p.total) * 100)}%`; },
+          isCancelled: () => running.cancel,
+        });
+        show(res);
+      } catch (err) {
+        out.innerHTML = `<div class="${err.message === 'cancelled' ? 'muted small' : 'warn'}">${err.message === 'cancelled' ? 'Cancelled.' : esc(err.message)}</div>`;
+      } finally {
+        running = null; runBtn.disabled = false; prog.hidden = true;
+      }
+    });
   }
 
   // Suggestions for the action pattern field.

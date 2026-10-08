@@ -175,7 +175,19 @@
     const exp = account.export;
     const worn = (x) => x.location && normId(x.location) === String(charId);
     const lc = exp.light_cones.find(worn);
-    const relics = exp.relics.filter(worn);
+    return {
+      ...relicBuild(exp.relics.filter(worn), charId),
+      eidolon: ch.eidolon || 0,
+      lcId: lc ? String(lc.id) : '',
+      lcS: lc ? lc.superimposition || 1 : 1,
+      level: ch.level,
+    };
+  }
+
+  // The slot fields a set of relic pieces gives a character: sets, SPD from boots and
+  // substats, ER rope and the summed main / sub stats. Used for the equipped build and by the
+  // optimizer for candidate builds.
+  function relicBuild(relics, charId) {
 
     const count = (slots) => {
       const n = new Map();
@@ -202,9 +214,6 @@
     const relicStats = relicTotals(relics, (window.HSR_DATA.characters.find((c) => c.id === String(charId)) || {}).element);
     return {
       relicStats,
-      eidolon: ch.eidolon || 0,
-      lcId: lc ? String(lc.id) : '',
-      lcS: lc ? lc.superimposition || 1 : 1,
       set1, set2: set1 ? set2 : 'same',
       planar: planar ? planar[0] : '',
       boots: bootsSpd > 0,
@@ -212,7 +221,6 @@
       subSpd: Math.round(subSpd * 1000) / 1000,
       errRope: !!rope, errRopeValue: errRopeValue != null ? Math.round(errRopeValue * 10000) / 10000 : undefined,
       relicCount: relics.length,
-      level: ch.level,
     };
   }
 
@@ -272,7 +280,7 @@
 
   window.HSRAccount = {
     init, onChange, connect: reconnect, importFile, clear, settings, saveSettings,
-    buildFor, character, ownedIds, ownedLightCones,
+    buildFor, relicBuild, relicTotals, normId, character, ownedIds, ownedLightCones,
     get status() { return status; },
     get data() { return account; },
   };
