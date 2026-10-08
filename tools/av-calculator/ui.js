@@ -115,7 +115,7 @@
     }
     root.innerHTML = `
       <h1 class="tool-title">Battle Simulator</h1>
-      <p class="tool-sub">See when each character acts, turn by turn.</p>
+      <p class="tool-sub">Turn order, Energy and damage for your team, turn by turn.</p>
       <div class="card mode-bar" id="mode-bar"></div>
       <div class="section">
         <div class="section-head">
