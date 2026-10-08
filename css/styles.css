@@ -289,8 +289,10 @@ table.av-table { border-collapse: collapse; width: 100%; min-width: 520px; table
   border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 12px; font-size: 12px; color: var(--muted);
 }
 .account-chip:hover { border-color: var(--gold); color: var(--text); }
-.sync-btn { margin-left: auto; padding: 6px 12px; font-size: 12px; border-radius: 999px; }
-.sync-btn:not([hidden]) + .account-chip { margin-left: 8px; }
+.header-account { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.header-account .account-chip { margin-left: 0; }
+.sync-btn { padding: 6px 12px; font-size: 12px; border-radius: 999px; }
+.sync-btn:disabled { opacity: .7; cursor: default; }
 .account-chip b { color: var(--text); font-weight: 600; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #69708c; flex: none; }
 [data-status="connected"] .dot { background: #4ade80; box-shadow: 0 0 8px #4ade80; }

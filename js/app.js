@@ -74,12 +74,22 @@
   function initAccountUi() {
     const chip = document.getElementById('account-chip');
     const sync = document.getElementById('sync-builds');
+    // Sync all: reconnect so the archiver sends a fresh full scan, then reload every team build.
     sync.onclick = () => {
-      const detail = { count: 0 };
-      window.dispatchEvent(new CustomEvent('hsr:sync-builds', { detail }));
-      sync.textContent = detail.count ? `Synced ${detail.count}` : 'No matching characters';
-      clearTimeout(sync.reset);
-      sync.reset = setTimeout(() => { sync.textContent = 'Sync builds'; }, 2000);
+      const A = window.HSRAccount, before = A.data ? A.data.updatedAt : 0;
+      sync.disabled = true; sync.textContent = 'Syncing…';
+      const finish = () => {
+        off(); clearTimeout(timer);
+        window.dispatchEvent(new CustomEvent('hsr:sync-builds', { detail: {} }));
+        const n = A.data ? A.data.export.characters.length : 0;
+        sync.textContent = `Synced ${n} characters`;
+        sync.disabled = false;
+        clearTimeout(sync.reset);
+        sync.reset = setTimeout(() => { sync.textContent = 'Sync all'; }, 2500);
+      };
+      const off = A.onChange(() => { if (A.data && A.data.updatedAt !== before && A.data.source === 'archiver') finish(); });
+      const timer = setTimeout(finish, 4000); // archiver didn't resend: use what we already have
+      A.connect();
     };
     const A = window.HSRAccount;
     const draw = () => {
@@ -91,7 +101,7 @@
           : STATUS_TEXT[st] || 'Connect account'}</span>`;
       chip.title = acc ? `${STATUS_TEXT[st] || ''}. Click for details.` : 'Load your characters from Reliquary Archiver';
       // Live with an account loaded: offer a one-click reload of every build on the team.
-      sync.hidden = !(acc && st === 'connected');
+      sync.hidden = !(acc && (st === 'connected' || sync.disabled)); // stays up while a sync reconnects
       if (openAccount.refresh) openAccount.refresh();
     };
     A.onChange(draw);

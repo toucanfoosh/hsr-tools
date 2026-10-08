@@ -169,7 +169,7 @@
     renderModeBar();
     renderTeam();
     renderResults();
-    // Header "Sync builds": reload every team member's build from the live account.
+    // Header "Sync all": reload every team member's build from the live account.
     window.addEventListener('hsr:sync-builds', (ev) => {
       let n = 0;
       state.slots.forEach((sl) => { if (sl && applyAccount(sl)) n += 1; });
