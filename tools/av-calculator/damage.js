@@ -452,7 +452,7 @@
   // spread + all; others: all). Returns the reduction per broken enemy for Super Break.
   function applyToughness(sim, src, ab, attacker, act) {
     const t = ab && ab.tough;
-    if (!t || !sim.enemies) return;
+    if (!t || !sim.enemies || !sim.breaks) return;
     const es = sim.enemies();
     if (!es.length) return;
     const st = liveStats(sim, src);

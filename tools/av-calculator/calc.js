@@ -134,6 +134,7 @@
       enemyRes: state.enemyRes == null || state.enemyRes === '' ? 0.2 : +state.enemyRes / 100,
       enemyBroken: !!state.enemyBroken,
       enemyToughness: +state.enemyToughness || 160,
+      breaks: state.breaks === true,
       elationAttacks: state.elationAttacks !== false,
     });
 

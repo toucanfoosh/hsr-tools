@@ -26,7 +26,8 @@
   }
 
   class Sim {
-    constructor({ elationAttacks = true, firstCycle, cycleLen, maxAV, enemies = 1, enemySpd = 120, enemyHits = 1, enemyLevel = 95, enemyRes = 0.2, enemyBroken = false, enemyToughness = 160 }) {
+    constructor({ breaks = false, elationAttacks = true, firstCycle, cycleLen, maxAV, enemies = 1, enemySpd = 120, enemyHits = 1, enemyLevel = 95, enemyRes = 0.2, enemyBroken = false, enemyToughness = 160 }) {
+      this.breaks = breaks; // Weakness Break / Toughness (off unless the team setting turns it on)
       this.enemyToughness = enemyToughness;
       this.elationAttacks = elationAttacks;
       this.enemyLevel = enemyLevel;
@@ -383,7 +384,6 @@
         if (!v) break;
         this.hitsTaken.set(v, (this.hitsTaken.get(v) || 0) + 1);
         this.hitsTotal += 1;
-        this.gainEnergy(v, 10);
         this.withCause({ by: e, label: e.name, hook: 'enemy' }, () => {
           this.fire(v, 'hit', e);
           this.fireAll('allyHit', v, e);

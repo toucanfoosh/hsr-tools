@@ -1,7 +1,7 @@
 // Energy, Skill Point and Elation behaviour per character (Novaflare kits), layered on top of
 // the turn-order kits in effects.js. The engine already handles the standard gains: Basic ATK
 // / Skill / Ultimate / Elation Skill Energy from the game data, Skill Point use and recovery,
-// 50% starting Energy and Energy from enemy hits. These hooks add everything else: off-turn
+// and 50% starting Energy (being hit gives none: not modeled). These hooks add everything else: off-turn
 // gains, battle-start gains, follow-ups, Energy given to allies, SP generators and the Elation
 // resources (Punchline, Certified Banger).
 //

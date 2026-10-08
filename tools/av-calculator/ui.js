@@ -196,18 +196,21 @@
         </select></label>
       <label class="field num"><span>Cycles shown</span>
         <input type="number" min="1" max="60" data-g="showCycles" value="${state.showCycles || 4}"></label>
-      <label class="field num"><span class="label-row">Enemies ${infoIcon('Enemies take turns on the timeline. Each enemy turn hits your team (spread by taunt), giving 10 Energy per hit and triggering counters. The count also sets how many targets AoE / Blast abilities hit.')}</span>
+      <label class="field num"><span class="label-row">Enemies ${infoIcon('Enemies take turns on the timeline. Each enemy turn hits your team (spread by taunt), triggering counters and on-hit effects. Energy from being hit is not counted. The count also sets how many targets AoE / Blast abilities hit.')}</span>
         <input type="number" min="0" max="5" data-g="enemies" value="${state.enemies == null ? 2 : state.enemies}"></label>
       <label class="field num"><span>Enemy SPD</span>
         <input type="number" min="1" max="500" data-g="enemySpd" value="${state.enemySpd || 120}"></label>
       <label class="field num"><span>Hits / turn</span>
         <input type="number" min="0" max="5" data-g="enemyHits" value="${state.enemyHits == null ? 1 : state.enemyHits}"></label>
-      <label class="field num"><span class="label-row">Toughness ${infoIcon('Each enemy\'s Toughness (enemies are assumed weak to your team). At 0 they are Weakness Broken: Break DMG, their action is delayed, they take full DMG and Super Break applies until their next turn.')}</span>
-        <input type="number" min="10" max="2000" data-g="enemyToughness" value="${state.enemyToughness || 160}"></label>
+      ${state.breaks ? `<label class="field num"><span class="label-row">Toughness ${infoIcon('Each enemy\'s Toughness (enemies are assumed weak to your team). At 0 they are Weakness Broken: Break DMG, their action is delayed, they take full DMG and Super Break applies until their next turn.')}</span>
+        <input type="number" min="10" max="2000" data-g="enemyToughness" value="${state.enemyToughness || 160}"></label>` : ''}
+
       <label class="field num"><span>Enemy Lv</span>
         <input type="number" min="1" max="120" data-g="enemyLevel" value="${state.enemyLevel || 95}"></label>
       <label class="field num"><span class="label-row">Enemy RES % ${infoIcon('The enemies\' RES to your damage types. 20% is the default for most enemies; 0% if they are weak to your damage type.')}</span>
         <input type="number" min="-100" max="100" data-g="enemyRes" value="${state.enemyRes == null ? 20 : state.enemyRes}"></label>
+      <label class="check elation-attacks"><input type="checkbox" data-g="breaks" ${state.breaks ? 'checked' : ''}>
+        Weakness Break ${infoIcon('Off: enemies are never Weakness Broken (no Break / Super Break DMG, no break delays). Turn on for break teams (Firefly, Rappa, Boothill, The Dahlia...).')}</label>
       ${state.slots.some((x) => x && CHARS[x.charId] && CHARS[x.charId].combat.elationPid) ? `
         <label class="check elation-attacks"><input type="checkbox" data-g="elationAttacks" ${state.elationAttacks !== false ? 'checked' : ''}>
           Elation Skills count as attacks ${infoIcon('When on, damaging Elation Skills trigger "after an ally attacks" effects (Robin\'s Energy, Aventurine • Waveflair\'s Fervor, Feixiao\'s Flying Aureus...). The game text doesn\'t say clearly either way.')}</label>` : ''}
@@ -529,7 +532,7 @@
     if (t.dataset.g) {
       const v = t.type === 'number' ? t.value : t.value;
       state[t.dataset.g] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (v === '' ? '' : +v) : v;
-      if (t.dataset.g === 'mode') renderModeBar();
+      if (t.dataset.g === 'mode' || t.dataset.g === 'breaks') renderModeBar();
       changed(false);
       return;
     }
