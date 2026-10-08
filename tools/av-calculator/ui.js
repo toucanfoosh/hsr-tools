@@ -174,8 +174,15 @@
     renderResults();
     // Header "Sync all": reload every team member's build from the live account.
     window.addEventListener('hsr:sync-builds', (ev) => {
+      // Sync replaces everything: owned characters get their real build; characters you don't
+      // own lose any made-up gear, eidolons and stats (back to a default build).
       let n = 0;
-      state.slots.forEach((sl) => { if (sl && applyAccount(sl)) n += 1; });
+      state.slots.forEach((sl, i) => {
+        if (!sl) return;
+        if (applyAccount(sl)) { n += 1; return; }
+        const fresh = newSlot(sl.charId);
+        state.slots[i] = { ...fresh, pattern: sl.pattern, ultTiming: sl.ultTiming, ultMode: sl.ultMode, ultFirst: sl.ultFirst, ultEvery: sl.ultEvery, target: sl.target, opts: sl.opts };
+      });
       if (ev.detail) ev.detail.count = n;
       renderTeam(); renderResults(); save();
     });

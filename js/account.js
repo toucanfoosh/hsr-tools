@@ -76,6 +76,17 @@
     emit();
   }
 
+  // Manual edits from the Inventory tab. Starts an empty account if none is loaded yet.
+  // The next archiver scan (Sync all) replaces everything, edits included.
+  function edit(fn) {
+    if (!account) account = { export: { metadata: {}, characters: [], light_cones: [], relics: [] }, updatedAt: Date.now(), source: 'manual' };
+    fn(account.export);
+    account.updatedAt = Date.now();
+    account.edited = true;
+    persist();
+    emit();
+  }
+
   function upsert(list, items, key) {
     const byKey = new Map(list.map((x, i) => [String(x[key]), i]));
     for (const it of items) {
@@ -280,7 +291,7 @@
 
   window.HSRAccount = {
     init, onChange, connect: reconnect, importFile, clear, settings, saveSettings,
-    buildFor, relicBuild, relicTotals, normId, character, ownedIds, ownedLightCones,
+    buildFor, relicBuild, relicTotals, normId, character, ownedIds, ownedLightCones, edit,
     get status() { return status; },
     get data() { return account; },
   };
