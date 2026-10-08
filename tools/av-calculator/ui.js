@@ -1,4 +1,4 @@
-// Battle Simulator UI: team builder, character picker, timeline chart and tables.
+// Combat Sim UI: team builder, character picker, timeline chart and tables.
 (function () {
   const { CDN, esc } = window.HSRTools;
   const { MODES, CHARS, LCS, RELICS, simulate, panelStats } = window.AVCalc;
@@ -118,14 +118,14 @@
       state.showCycles = 4;
     }
     root.innerHTML = `
-      <h1 class="tool-title">Battle Simulator</h1>
-      <p class="tool-sub">Turn order, Energy and damage for your team, turn by turn.</p>
+      <h1 class="tool-title">Combat Sim</h1>
+      <p class="tool-sub">Turn order, Energy and damage for your team, plus a relic optimizer for your inventory.</p>
       <div class="card mode-bar" id="mode-bar"></div>
       <div class="section">
         <div class="section-head">
           <h2>Team</h2>
           <div class="head-actions">
-            <button class="btn" data-action="optimizeTeam" hidden title="Find relics for the whole team from your inventory, without sharing pieces">Optimize team</button>
+            <button class="btn primary" data-action="optimizeTeam" title="Find relics for the whole team from your inventory, without sharing pieces">✦ Optimize team</button>
             <button class="btn ghost" data-action="demo">Load example</button>
             <button class="btn ghost" data-action="clear">Clear team</button>
             <button class="btn" data-action="share">Copy share link</button>
@@ -222,7 +222,7 @@
   function renderTeam() {
     const team = root.querySelector('#team');
     const ot = root.querySelector('[data-action="optimizeTeam"]');
-    if (ot) ot.hidden = !Account.data || state.slots.filter((x) => x && CHARS[x.charId]).length < 2;
+    if (ot) ot.hidden = state.slots.filter((x) => x && CHARS[x.charId]).length < 2;
     team.innerHTML = state.slots.map((s, i) => (s && CHARS[s.charId] ? slotCard(s, i) : emptySlot(i))).join('');
     updateSpeeds();
   }
@@ -286,7 +286,7 @@
 ` : ''}
         </div>
 
-        <div class="field"><span class="label-row relic-head">Relics &amp; planar${Account.data ? `<button type="button" class="link-btn" data-action="optimize" data-slot="${i}" title="Find the best relics from your inventory for this character">Optimize</button>` : ''}</span>
+        <div class="field"><span class="label-row relic-head">Relics &amp; planar<button type="button" class="opt-btn" data-action="optimize" data-slot="${i}" title="Find the best relics from your inventory for this character">✦ Optimize</button></span>
           <div class="relic-tiles">
             ${s.set1 && s.set2 === 'same'
               // A full 4-piece: one tile, with a small + on its corner to split it into 2pc + 2pc.
@@ -513,8 +513,9 @@
       }
       case 'spdAuto': ev.preventDefault(); state.slots[i].spdAuto = true; state.slots[i].spd = ''; changed(true); break;
       case 'gear': ev.stopPropagation(); openGearPicker(i, t.dataset.kind); break;
-      case 'optimize': ev.stopPropagation(); openOptimizer(i); break;
-      case 'optimizeTeam': openTeamOptimizer(); break;
+      // The optimizer needs your relics: without an account, open the account window instead.
+      case 'optimize': ev.stopPropagation(); if (Account.data) openOptimizer(i); else window.HSRTools.openAccount(); break;
+      case 'optimizeTeam': if (Account.data) openTeamOptimizer(); else window.HSRTools.openAccount(); break;
       case 'sync': ev.stopPropagation(); if (applyAccount(state.slots[i])) changed(true); break;
       case 'demo': state = JSON.parse(JSON.stringify(DEMO)); renderModeBar(); changed(true); break;
       case 'clear': state.slots = [null, null, null, null]; changed(true); break;
@@ -1114,23 +1115,25 @@
       parts.push(`<line x1="${X(av)}" x2="${X(av)}" y1="${TOP}" y2="${H - 18}" stroke="rgba(255,255,255,.05)"/>`);
       parts.push(`<text x="${X(av)}" y="${H - 4}" fill="#6f789a" font-size="10" text-anchor="middle">${av}</text>`);
     }
-    // Lane backgrounds + labels
+    // Lane lines (chart) + labels (a separate column pinned to the left while scrolling)
+    const labels = [];
     for (const l of lanes) {
       parts.push(`<line x1="0" x2="${W}" y1="${l.y + l.h}" y2="${l.y + l.h}" stroke="rgba(42,52,88,.8)"/>`);
+      labels.push(`<line x1="0" x2="${GUT}" y1="${l.y + l.h}" y2="${l.y + l.h}" stroke="rgba(42,52,88,.8)"/>`);
       if (l.special === 'aha') {
-        parts.push(`<g transform="translate(24,${l.y + l.h / 2})"><circle r="13" fill="#0b0f1d" stroke="url(#ahaGrad)" stroke-width="2.5"/><image href="assets/aha-mask.png" x="-8" y="-8" width="16" height="16"/></g>`);
-        parts.push(`<text x="48" y="${l.y + l.h / 2 + 4}" fill="#e7e9f3" font-size="13" font-weight="600">Aha <tspan fill="#9aa3c2" font-size="11" font-weight="500">${fmt(r.sim.spd(r.sim.aha), 0)} SPD</tspan></text>`);
+        labels.push(`<g transform="translate(24,${l.y + l.h / 2})"><circle r="13" fill="#0b0f1d" stroke="url(#ahaGrad)" stroke-width="2.5"/><image href="assets/aha-mask.png" x="-8" y="-8" width="16" height="16"/></g>`);
+        labels.push(`<text x="48" y="${l.y + l.h / 2 + 4}" fill="#e7e9f3" font-size="13" font-weight="600">Aha <tspan fill="#9aa3c2" font-size="11" font-weight="500">${fmt(r.sim.spd(r.sim.aha), 0)} SPD</tspan></text>`);
       } else if (l.special === 'enemy') {
-        parts.push(`<g transform="translate(24,${l.y + l.h / 2})"><rect x="-9" y="-9" width="18" height="18" rx="4" fill="#5a2230" stroke="#ff7a8a"/></g>`);
-        parts.push(`<text x="48" y="${l.y + l.h / 2 + 4}" fill="#e7e9f3" font-size="13" font-weight="600">Enemies <tspan fill="#9aa3c2" font-size="11" font-weight="500">×${r.sim.enemyCount}</tspan></text>`);
+        labels.push(`<g transform="translate(24,${l.y + l.h / 2})"><rect x="-9" y="-9" width="18" height="18" rx="4" fill="#5a2230" stroke="#ff7a8a"/></g>`);
+        labels.push(`<text x="48" y="${l.y + l.h / 2 + 4}" fill="#e7e9f3" font-size="13" font-weight="600">Enemies <tspan fill="#9aa3c2" font-size="11" font-weight="500">×${r.sim.enemyCount}</tspan></text>`);
       } else if (l.main) {
-        parts.push(`<g transform="translate(24,${l.y + l.h / 2})"><circle r="17" fill="${elColor(l.ch.element)}" opacity=".35"/>${chibi(l.ch.id, 38)}</g>`);
+        labels.push(`<g transform="translate(24,${l.y + l.h / 2})"><circle r="17" fill="${elColor(l.ch.element)}" opacity=".35"/>${chibi(l.ch.id, 38)}</g>`);
         const [nm, sub] = l.ch.name.split(' • ');
-        parts.push(sub
+        labels.push(sub
           ? `<text x="48" y="${l.y + l.h / 2 - 3}" fill="#e7e9f3" font-size="13" font-weight="600">${esc(truncate(nm, 15))}<tspan x="48" dy="15" fill="#9aa3c2" font-size="11" font-weight="500">${esc(sub)}</tspan></text>`
           : `<text x="48" y="${l.y + l.h / 2 + 4}" fill="#e7e9f3" font-size="13" font-weight="600">${esc(truncate(nm, 15))}</text>`);
       } else {
-        parts.push(`<text x="48" y="${l.y + l.h / 2 + 4}" fill="#9aa3c2" font-size="11">↳ ${esc(l.unit.name)}</text>`);
+        labels.push(`<text x="48" y="${l.y + l.h / 2 + 4}" fill="#9aa3c2" font-size="11">↳ ${esc(l.unit.name)}</text>`);
       }
     }
     // Where advances / pulls / extra turns came from: a dashed line from the source's lane to
@@ -1209,7 +1212,10 @@
         parts.push(`<g data-tip="${attr(tip)}" transform="translate(${cx},${cy})"><circle r="9" fill="#2a3458" stroke="${crossMarks(e).length ? elOf(crossMarks(e)[0].by) : '#8891b5'}"/><text y="3.5" text-anchor="middle" font-size="9" font-weight="700" fill="#e7e9f3">${e.n}</text></g>`);
       }
     }
-    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Action timeline">${parts.join('')}${tags.join('')}</svg>`;
+    const defs = parts[0];
+    return `<div class="tl-row" style="width:${W}px">
+      <svg class="tl-labels" width="${GUT}" height="${H}" viewBox="0 0 ${GUT} ${H}" aria-hidden="true">${defs}<rect width="${GUT}" height="${H}" class="tl-label-bg"/>${labels.join('')}<line x1="${GUT - 0.5}" x2="${GUT - 0.5}" y1="0" y2="${H}" stroke="rgba(42,52,88,.9)"/></svg>
+      <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Action timeline">${parts.join('')}${tags.join('')}</svg></div>`;
   }
   // Chibis are full-body stickers, so they are drawn unclipped; plain avatars keep the round clip.
   const chibi = (id, size) => (CHARS[id] && CHARS[id].chibi
@@ -1521,5 +1527,5 @@
   dl.innerHTML = PATTERNS.map((p) => `<option value="${p}">`).join('');
   document.body.appendChild(dl);
 
-  window.HSRTools.register({ id: 'av-calculator', title: 'Battle Simulator', mount });
+  window.HSRTools.register({ id: 'av-calculator', title: 'Combat Sim', mount });
 })();

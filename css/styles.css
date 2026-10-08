@@ -208,6 +208,11 @@ details.more[open] summary { color: var(--gold-2); margin-bottom: 8px; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
 .timeline-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 6px; }
 .timeline-scroll svg { display: block; }
+/* The lane names stay pinned on the left while the chart scrolls under them. */
+.tl-row { display: flex; }
+.tl-row svg { flex: none; }
+.tl-labels { position: sticky; left: 0; z-index: 2; margin-right: -150px; }
+.tl-label-bg { fill: var(--panel); }
 svg text { font-family: Inter, system-ui, sans-serif; }
 
 .table-wrap { overflow-x: auto; }
@@ -529,3 +534,6 @@ select option { background: var(--bg-2); color: var(--text); }
 .opt-move .btn:disabled { opacity: .35; cursor: default; }
 .opt-progress[hidden] { display: none; }
 .opt-picked { font-size: 12px; color: var(--gold-2); min-height: 16px; }
+
+.opt-btn { border: 1px solid rgba(231, 194, 125, .45); background: rgba(231, 194, 125, .08); color: var(--gold-2); border-radius: 999px; padding: 3px 10px; font: 600 11px/1.2 Inter, sans-serif; letter-spacing: 0; text-transform: none; cursor: pointer; }
+.opt-btn:hover { background: var(--gold); color: #1a1406; border-color: var(--gold); }

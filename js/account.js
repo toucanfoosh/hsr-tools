@@ -168,7 +168,7 @@
     return out;
   }
 
-  // Everything the Battle Simulator needs to pre-fill a character's slot.
+  // Everything the Combat Sim needs to pre-fill a character's slot.
   function buildFor(charId) {
     const ch = character(charId);
     if (!ch) return null;
