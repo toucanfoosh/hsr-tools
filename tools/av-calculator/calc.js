@@ -15,6 +15,7 @@
     custom: { name: 'Custom', first: 150, len: 100 },
   };
   const DEFAULT_CYCLES = 4;
+  const ENEMY_SPD = 120;
 
   const byId = (list) => Object.fromEntries(list.map((x) => [x.id, x]));
   const CHARS = byId(DATA.characters);
@@ -128,8 +129,10 @@
     const sim = new Sim({
       firstCycle: first, cycleLen: len, maxAV,
       enemies: state.enemies == null ? 2 : +state.enemies,
-      enemySpd: +state.enemySpd || 120,
-      enemyHits: state.enemyHits == null ? 1 : +state.enemyHits,
+      // Enemies only take damage: they never attack, and their hidden turns (fixed 120 SPD)
+      // only time DoT ticks and debuff durations.
+      enemySpd: ENEMY_SPD,
+      enemyHits: 0,
       enemyLevel: +state.enemyLevel || 95,
       enemyRes: state.enemyRes == null || state.enemyRes === '' ? 0.2 : +state.enemyRes / 100,
       enemyBroken: !!state.enemyBroken,

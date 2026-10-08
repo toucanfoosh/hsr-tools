@@ -197,10 +197,8 @@
         </select></label>
       <label class="field num"><span>Cycles shown</span>
         <input type="number" min="1" max="60" data-g="showCycles" value="${state.showCycles || 4}"></label>
-      <label class="field num"><span class="label-row">Enemies ${infoIcon('Enemies take turns on the timeline. Each enemy turn hits your team (spread by taunt), triggering counters and on-hit effects. Energy from being hit is not counted. The count also sets how many targets AoE / Blast abilities hit.')}</span>
+      <label class="field num"><span class="label-row">Enemies ${infoIcon('How many enemies your attacks hit (AoE / Blast targets). Enemies are only there to take damage: they don\'t attack and aren\'t shown on the timeline.')}</span>
         <input type="number" min="0" max="5" data-g="enemies" value="${state.enemies == null ? 2 : state.enemies}"></label>
-      <label class="field num"><span>Enemy SPD</span>
-        <input type="number" min="1" max="500" data-g="enemySpd" value="${state.enemySpd || 120}"></label>
       ${state.breaks ? `<label class="field num"><span class="label-row">Toughness ${infoIcon('Each enemy\'s Toughness (enemies are assumed weak to your team). At 0 they are Weakness Broken: Break DMG, their action is delayed, they take full DMG and Super Break applies until their next turn.')}</span>
         <input type="number" min="10" max="2000" data-g="enemyToughness" value="${state.enemyToughness || 160}"></label>` : ''}
 
@@ -208,8 +206,6 @@
         <input type="number" min="1" max="120" data-g="enemyLevel" value="${state.enemyLevel || 95}"></label>
       <label class="field num"><span class="label-row">Enemy RES % ${infoIcon('A standard enemy: the same RES to every damage type (20% is typical). Enemies aren\'t killed, so HP doesn\'t matter.')}</span>
         <input type="number" min="-100" max="100" data-g="enemyRes" value="${state.enemyRes == null ? 20 : state.enemyRes}"></label>
-      <label class="field num"><span>Hits / turn</span>
-        <input type="number" min="0" max="5" data-g="enemyHits" value="${state.enemyHits == null ? 1 : state.enemyHits}"></label>
       <label class="check elation-attacks"><input type="checkbox" data-g="breaks" ${state.breaks ? 'checked' : ''}>
         Weakness Break ${infoIcon('Off: enemies are never Weakness Broken (no Break / Super Break DMG, no break delays). Turn on for break teams (Firefly, Rappa, Boothill, The Dahlia...).')}</label>
       ${state.slots.some((x) => x && CHARS[x.charId] && CHARS[x.charId].combat.elationPid) ? `
@@ -893,7 +889,6 @@
               <span><i class="lg-extra"></i>Extra turn granted</span>
               <span><i class="lg-aha"></i>Aha Instant</span>
               <span><i style="background:linear-gradient(135deg,#ffd36e,#ff8fd1,#8fd3ff)"></i>Elation Skill</span>
-              <span><i style="background:#5a2230;border:1px solid #ff7a8a;border-radius:2px"></i>Enemy turn</span>
               <span><i style="background:#ffd36e;border-radius:2px;transform:skewX(-15deg)"></i>Weakness Break</span>
               <span><i style="background:#0b0f1d;border:1.5px solid var(--muted)"></i>Follow-up (F)</span>
               <span><i style="background:transparent;border:1.5px solid var(--gold);height:0;border-radius:0;width:12px"></i>Energy</span>
@@ -1031,7 +1026,7 @@
   function orderList(r) {
     const cols = [];
     for (let c = 0; c < r.cycles; c++) {
-      const evs = r.events.filter((e) => e.cycle === c);
+      const evs = r.events.filter((e) => e.cycle === c && !(e.kind === 'enemy' && e.type !== 'Break'));
       const [a, b] = cycleRange(r, c);
       const rows = evs.map((e) => {
         const owner = e.unit.owner || e.unit;
@@ -1077,7 +1072,8 @@
       for (const s of subs) lanes.push({ key: s.lane, unit: s.unit, ch: stats.ch, h: SUMMON_ROW, main: false });
     }
     if (r.events.some((e) => e.kind === 'aha')) lanes.push({ key: 'aha', unit: r.sim.aha, h: 40, special: 'aha' });
-    if (r.events.some((e) => e.kind === 'enemy')) lanes.push({ key: 'enemy', unit: null, h: 34, special: 'enemy' });
+    // Enemies only appear when Weakness Break is on (their Break markers).
+    if (r.events.some((e) => e.kind === 'enemy' && e.type === 'Break')) lanes.push({ key: 'enemy', unit: null, h: 34, special: 'enemy' });
     let y = TOP;
     lanes.forEach((l) => { l.y = y; y += l.h; });
     const H = y + 24;
@@ -1180,11 +1176,7 @@
         parts.push(`<g data-tip="${attr(`<b>${esc(e.unit.name)}: Weakness Broken</b>${e.by ? `<br>by ${esc(e.by)}` : ''}<br>AV ${fmt(e.av, 2)}`)}" transform="translate(${cx},${cy - 4}) scale(1.6)"><path d="M-2,-7 L3,-1 L-1,0 L2,7 L-4,0 L0,-1 Z" fill="#ffd36e" stroke="#0b0f1d" stroke-width="0.8"/></g>`);
         continue;
       }
-      if (e.kind === 'enemy') {
-        const k = `enemy@${fmt(e.av, 3)}`; const dup = stackAt.get(k) || 0; stackAt.set(k, dup + 1);
-        parts.push(`<g data-tip="${attr(tip)}" transform="translate(${cx + dup * 8},${cy})"><rect x="-7" y="-7" width="14" height="14" rx="3" fill="#5a2230" stroke="#ff7a8a"/></g>`);
-        continue;
-      }
+      if (e.kind === 'enemy') continue; // enemy turns aren't shown (they only time DoTs)
       if (e.kind === 'char' && e.type === 'Elation') {
         parts.push(`<g data-tip="${attr(tip)}" transform="translate(${cx - 12},${cy + 21})"><path d="M0,-7 L2,-2 L7,0 L2,2 L0,7 L-2,2 L-7,0 L-2,-2 Z" fill="url(#ahaGrad)" stroke="#0b0f1d" stroke-width="1"/></g>`);
         continue;
