@@ -229,10 +229,10 @@ table.av-table { border-collapse: collapse; width: 100%; min-width: 520px; table
 .order-head b { color: var(--gold-2); font: 700 16px/1 Rajdhani, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
 .order-head span { font-size: 11px; color: var(--muted); }
 .order-col ol { list-style: none; margin: 0; padding: 6px 0; }
-.ev { display: grid; grid-template-columns: 48px 24px 1fr auto; align-items: center; gap: 8px; padding: 5px 14px; font-size: 13px; }
+.ev { display: grid; grid-template-columns: 48px 28px 1fr auto; align-items: center; gap: 8px; padding: 5px 14px; font-size: 13px; }
 .ev + .ev { border-top: 1px solid rgba(42, 52, 88, .5); }
 .ev .av { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; font-size: 12px; }
-.ev img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; background: var(--bg); }
+.ev img { width: 28px; height: 28px; object-fit: contain; display: block; justify-self: center; }
 .ev .who { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ev .what { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .ev .dim { opacity: .7; }
@@ -409,9 +409,9 @@ select option { background: var(--bg-2); color: var(--text); }
 
 /* ---------- combat sim additions ---------- */
 .ev-glyph { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; }
-.ev-glyph.aha { background: url(../assets/aha-mask.png) center / 15px no-repeat, var(--bg); box-shadow: inset 0 0 0 2px #ff8fd1; }
+.ev-glyph.aha { background: url(../assets/aha-mask.png) center / contain no-repeat; width: 20px; height: 20px; border-radius: 0; justify-self: center; }
 .legend i.lg-aha { background: url(../assets/aha-mask.png) center / 9px no-repeat, var(--bg); box-shadow: inset 0 0 0 1.5px #ff8fd1; }
-.ev-glyph.enemy { background: #5a2230; border: 1px solid #ff7a8a; border-radius: 6px; width: 18px; height: 18px; margin: 3px; }
+.ev-glyph.enemy { justify-self: center;  background: #5a2230; border: 1px solid #ff7a8a; border-radius: 6px; width: 18px; height: 18px; margin: 3px; }
 .ev.aha { background: rgba(255, 143, 209, .07); }
 .ev.aha .what { color: #ff8fd1; }
 .ev.elation .what { color: #ff8fd1; font-weight: 600; }
