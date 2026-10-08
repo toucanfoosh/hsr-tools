@@ -886,7 +886,8 @@
               <span><i style="background:#8891b5"></i>Summon / countdown</span>
               <span><i class="lg-adv"></i>Advanced / pulled (color = who did it)</span>
               <span><i class="lg-extra"></i>Extra turn granted</span>
-              <span><i style="background:linear-gradient(135deg,#ffd36e,#ff8fd1,#8fd3ff)"></i>Aha / Elation Skill</span>
+              <span><i class="lg-aha"></i>Aha Instant</span>
+              <span><i style="background:linear-gradient(135deg,#ffd36e,#ff8fd1,#8fd3ff)"></i>Elation Skill</span>
               <span><i style="background:#5a2230;border:1px solid #ff7a8a;border-radius:2px"></i>Enemy turn</span>
               <span><i style="background:#ffd36e;border-radius:2px;transform:skewX(-15deg)"></i>Weakness Break</span>
               <span><i style="background:#0b0f1d;border:1.5px solid var(--muted)"></i>Follow-up (F)</span>
@@ -1040,7 +1041,7 @@
         else if (e.type === 'FollowUp') { what = esc(e.label || 'Follow-up'); cls = 'fua'; }
         else what = `Turn ${e.n}${e.type === 'Extra' ? ' <span class="dim">(extra)</span>' : ''}`;
         const notes = crossMarks(e).map(markText);
-        const icon = e.kind === 'aha' ? '<span class="ev-glyph aha">A</span>' : e.kind === 'enemy' ? '<span class="ev-glyph enemy"></span>' : `<img src="${img.avatar(e.unit.icon)}" alt="">`;
+        const icon = e.kind === 'aha' ? '<span class="ev-glyph aha"></span>' : e.kind === 'enemy' ? '<span class="ev-glyph enemy"></span>' : `<img src="${img.avatar(e.unit.icon)}" alt="">`;
         return `<li class="ev ${cls}"><span class="av">${fmt(e.av)}</span>${icon}<span class="who">${who}</span><span class="what">${what}</span>${
           notes.map((t) => `<span class="ev-note">» ${esc(t)}</span>`).join('')}</li>`;
       }).join('');
@@ -1114,7 +1115,7 @@
     for (const l of lanes) {
       parts.push(`<line x1="0" x2="${W}" y1="${l.y + l.h}" y2="${l.y + l.h}" stroke="rgba(42,52,88,.8)"/>`);
       if (l.special === 'aha') {
-        parts.push(`<g transform="translate(24,${l.y + l.h / 2})"><circle r="13" fill="url(#ahaGrad)"/><text y="4.5" text-anchor="middle" font-size="12" font-weight="800" fill="#1a1406">A</text></g>`);
+        parts.push(`<g transform="translate(24,${l.y + l.h / 2})"><circle r="13" fill="#0b0f1d" stroke="url(#ahaGrad)" stroke-width="2.5"/><image href="assets/aha-mask.png" x="-8" y="-8" width="16" height="16"/></g>`);
         parts.push(`<text x="48" y="${l.y + l.h / 2 + 4}" fill="#e7e9f3" font-size="13" font-weight="600">Aha <tspan fill="#9aa3c2" font-size="11" font-weight="500">${fmt(r.sim.spd(r.sim.aha), 0)} SPD</tspan></text>`);
       } else if (l.special === 'enemy') {
         parts.push(`<g transform="translate(24,${l.y + l.h / 2})"><rect x="-9" y="-9" width="18" height="18" rx="4" fill="#5a2230" stroke="#ff7a8a"/></g>`);
@@ -1165,7 +1166,9 @@
         : e.type === 'Elation' ? `<b>Elation Skill</b>${e.label ? ` (${esc(e.label)})` : ''} · ${fmt(e.punchline, 0)} Punchline`
         : e.type === 'FollowUp' ? `<b>${esc(e.label || 'Follow-up')}</b>` : `<b>Action ${e.n ?? ''}</b> (${e.type === 'Extra' && e.act && e.act !== 'Extra' ? `extra turn: ${ACT_NAME[e.act] || e.act}` : e.type})`}<br>AV <b>${fmt(e.av, 2)}</b> · Cycle ${e.cycle}${e.kind === 'char' ? `<br>SPD ${fmt(e.spd, 1)}` : ''}${e.dmg ? `<br>DMG <b>${fmtBig(e.dmg)}</b>` : ''}${resTip(e)}${heldTip}${sourceNotes(e).map((t) => `<br><span style="color:var(--accent)">» ${esc(t)}</span>`).join('')}`;
       if (e.kind === 'aha') {
-        parts.push(`<g data-tip="${attr(tip)}" transform="translate(${cx},${cy})"><circle r="11" fill="url(#ahaGrad)" stroke="#0b0f1d" stroke-width="1.5"/><text y="4" text-anchor="middle" font-size="10" font-weight="800" fill="#1a1406">${e.type === 'AhaExtra' ? '+' : fmt(e.punchline, 0)}</text></g>`);
+        // Aha's mask, with the Punchline it used (or + for an extra turn) as a small badge.
+        parts.push(`<g data-tip="${attr(tip)}" transform="translate(${cx},${cy})"><circle r="14" fill="#0b0f1d" stroke="url(#ahaGrad)" stroke-width="2.5"/><image href="assets/aha-mask.png" x="-9" y="-9" width="18" height="18"/>
+          <g transform="translate(11,11)"><circle r="8" fill="url(#ahaGrad)" stroke="#0b0f1d" stroke-width="1"/><text y="3.5" text-anchor="middle" font-size="${e.type === 'AhaExtra' || e.punchline < 100 ? 9 : 7}" font-weight="800" fill="#1a1406">${e.type === 'AhaExtra' ? '+' : fmt(e.punchline, 0)}</text></g></g>`);
         continue;
       }
       if (e.kind === 'enemy' && e.type === 'Break') {

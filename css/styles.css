@@ -409,7 +409,8 @@ select option { background: var(--bg-2); color: var(--text); }
 
 /* ---------- combat sim additions ---------- */
 .ev-glyph { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; }
-.ev-glyph.aha { background: linear-gradient(135deg, #ffd36e, #ff8fd1, #8fd3ff); color: #1a1406; }
+.ev-glyph.aha { background: url(../assets/aha-mask.png) center / 15px no-repeat, var(--bg); box-shadow: inset 0 0 0 2px #ff8fd1; }
+.legend i.lg-aha { background: url(../assets/aha-mask.png) center / 9px no-repeat, var(--bg); box-shadow: inset 0 0 0 1.5px #ff8fd1; }
 .ev-glyph.enemy { background: #5a2230; border: 1px solid #ff7a8a; border-radius: 6px; width: 18px; height: 18px; margin: 3px; }
 .ev.aha { background: rgba(255, 143, 209, .07); }
 .ev.aha .what { color: #ff8fd1; }
