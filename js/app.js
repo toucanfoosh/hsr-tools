@@ -73,6 +73,14 @@
 
   function initAccountUi() {
     const chip = document.getElementById('account-chip');
+    const sync = document.getElementById('sync-builds');
+    sync.onclick = () => {
+      const detail = { count: 0 };
+      window.dispatchEvent(new CustomEvent('hsr:sync-builds', { detail }));
+      sync.textContent = detail.count ? `Synced ${detail.count}` : 'No matching characters';
+      clearTimeout(sync.reset);
+      sync.reset = setTimeout(() => { sync.textContent = 'Sync builds'; }, 2000);
+    };
     const A = window.HSRAccount;
     const draw = () => {
       const acc = A.data;
@@ -82,6 +90,8 @@
         acc ? `<b>${acc.export.metadata && acc.export.metadata.uid ? `UID ${acc.export.metadata.uid}` : 'Account loaded'}</b> · ${st === 'connected' ? 'live' : `saved ${ago(acc.updatedAt)}`}`
           : STATUS_TEXT[st] || 'Connect account'}</span>`;
       chip.title = acc ? `${STATUS_TEXT[st] || ''}. Click for details.` : 'Load your characters from Reliquary Archiver';
+      // Live with an account loaded: offer a one-click reload of every build on the team.
+      sync.hidden = !(acc && st === 'connected');
       if (openAccount.refresh) openAccount.refresh();
     };
     A.onChange(draw);

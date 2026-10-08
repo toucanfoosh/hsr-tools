@@ -2093,7 +2093,7 @@
     },
     // ------------------------------------------------------------------ 1415 Cyrene
     1415: {
-      desc: 'Talent: allies +20% DMG. Causality in Trichotomy: at 180+ SPD allies +20% DMG and she / Demiurge get +2% Ice RES PEN per SPD above 180 (max 60). Skill Zone (2 of her turns; permanent after her first Ultimate): every ally DMG instance adds 24% as True DMG (E2: +6% per Ode-buffed ally, max +24%). Ripples: she and Demiurge +50% CRIT Rate. Demiurge\'s Minuet: 60% of its Max HP (= hers) to all, plus Ode to Ego bounces of 60% per teammate who gave Recollection (E1: +12; E4: +6% per Minuet, max 24 stacks); its first turn is the Ode on the chosen ally (no DMG): +40% DMG for 2 turns, or for Chrysos Heirs their special Ode (Genesis, Romance, Passage, Strife, Reason, Sky, Trickery, Worldbearing, Ocean, Law, Time, Earth). E6: first Ego: enemies −20% DEF.',
+      desc: 'Talent: allies +20% DMG. Causality in Trichotomy: at 180+ SPD allies +20% DMG and she / Demiurge get +2% Ice RES PEN per SPD above 180 (max 60). Skill Zone (2 of her turns; permanent after her first Ultimate): every ally DMG instance adds 24% as True DMG (E2: +6% per Ode-buffed ally, max +24%). Ripples: she and Demiurge +50% CRIT Rate. Demiurge\'s Minuet: 60% of its Max HP (= hers) to all, plus Ode to Ego bounces of 60% per teammate who gave Recollection (E1: +12; E4: +6% per Minuet, max 24 stacks); its Ode turns (see the Demiurge\'s turns setting) buff an ally instead of attacking: +40% DMG for 2 turns, or for Chrysos Heirs their special Ode (Genesis, Romance, Passage, Strife, Reason, Sky, Trickery, Worldbearing, Ocean, Law, Time, Earth). E6: first Ego: enemies −20% DEF.',
       CHRYSOS: { 8008: 'Genesis', 1402: 'Romance', 1403: 'Passage', 1404: 'Strife', 1407: 'LifeDeath', 1405: 'Reason', 1409: 'Sky', 1406: 'Trickery', 1408: 'Worldbearing', 1410: 'Ocean', 1412: 'Law', 1413: 'Time', 1414: 'Earth' },
       battleStart(sim, u) {
         u.state.zone = 0; u.state.minuets = 0; u.state.givers = new Set();
@@ -2124,7 +2124,9 @@
       },
       ode(sim, u, tg) {
         u.state.demiOde = false;
-        u.state.odeAllies = (u.state.odeAllies || 0) + 1;
+        u.state.odeSet = u.state.odeSet || new Set();
+        u.state.odeSet.add(tg);
+        u.state.odeAllies = u.state.odeSet.size; // E2 counts different allies
         const kind = this.CHRYSOS[tg.cfg.char.id];
         const add = (stats, turns = Infinity) => sim.addBuff(tg, { id: `ode${kind || ''}`, stats, turns });
         const s = st(sim, u);

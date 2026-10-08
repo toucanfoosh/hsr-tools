@@ -165,6 +165,13 @@
     renderModeBar();
     renderTeam();
     renderResults();
+    // Header "Sync builds": reload every team member's build from the live account.
+    window.addEventListener('hsr:sync-builds', (ev) => {
+      let n = 0;
+      state.slots.forEach((sl) => { if (sl && applyAccount(sl)) n += 1; });
+      if (ev.detail) ev.detail.count = n;
+      renderTeam(); renderResults(); save();
+    });
     let lastSeen = null;
     Account.onChange(() => {
       const stamp = Account.data ? Account.data.updatedAt : 0;

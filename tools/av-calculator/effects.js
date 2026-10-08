@@ -323,7 +323,18 @@
       targetLabel: 'Demiurge\'s Ode target',
       autoUlt: 'Automatic: 24 Recollection for the first Ultimate, then 12.',
       desc: 'Recollection: Basic +1, Skill +3, Enhanced Basic +3, +1 when an ally with "Future" acts (Future is re-granted after Cyrene acts; memosprites keep it), plus 2/3/6 at battle start for 1/2/3 Chrysos Heir / Remembrance teammates (E2: +12). First Ultimate (24): summons Demiurge (0 SPD) with an extra turn and activates all teammates\' Ultimates (E6: all allies advance 100%). Later Ultimates (12): Demiurge extra turn. Demiurge\'s first turn uses the Ode on the chosen teammate (Aglaea: max SPD stacks; Mydei: Godslayer or 100% advance; Anaxa: acts immediately; Phainon: +6 Coreflame and a second set of Khaslana turns; Dan Heng PT: Souldragon advances 100%; Trailblazer Remembrance: Demiurge extra turn after each Enhanced Basic), later turns use Minuet. Story: +1 per Ultimate and on summon; at 3 Demiurge gets an extra turn. E6: from the 2nd Ode to Ego on, all allies advance 24%.',
-      options: [{ key: 'firstOde', label: 'Demiurge\'s first turn uses the Ode (not Minuet)', type: 'check', def: true }],
+      // How Demiurge spends its turns: the Ode (a buff on an ally) or Minuet of Blooms and Plumes (attack).
+      options: [{ key: 'odePlan', label: 'Demiurge\'s turns', type: 'select', def: 'once', choices: [
+        ['once', 'Ode the target once, then attack'],
+        ['each', 'Ode each teammate once (target first), then attack'],
+        ['always', 'Always Ode the target'],
+        ['never', 'Always attack (no Ode)'],
+      ] }],
+      odePlan(u) {
+        const o = u.cfg.opts || {};
+        if (!o.odePlan && o.firstOde === false) return 'never'; // saved before the plan setting
+        return O(u, 'odePlan') || 'once';
+      },
       battleStart(sim, u) {
         const heirs = sim.allies(u).filter((a) => CHRYSOS.has(a.cfg.char.id) || a.cfg.char.path === 'Remembrance').length;
         u.state.rec = [0, 2, 3, 6][Math.min(3, heirs)] + (E(u) >= 2 ? 12 : 0);
@@ -377,10 +388,17 @@
         }
       },
       demiurgeAct(sim, u) {
-        const tg = target(sim, u);
+        const plan = this.odePlan(u), tg = target(sim, u);
         u.state.demiOde = false;
-        if (!u.state.odeUsed && O(u, 'firstOde') && tg) {
+        u.state.oded = u.state.oded || new Set();
+        let odeTg = null;
+        if (plan === 'always') odeTg = tg;
+        else if (plan === 'once' && !u.state.odeUsed) odeTg = tg;
+        else if (plan === 'each') odeTg = [tg, ...sim.allies(u).filter((a) => a !== tg)].find((a) => a && !u.state.oded.has(a)) || null;
+        if (odeTg) {
+          const tg = odeTg;
           u.state.odeUsed = true;
+          u.state.oded.add(tg);
           u.state.demiOde = tg;
           // Being targeted counts as an ability on the ally (Phainon's Coreflame).
           sim.fire(tg, 'targetedBy', u, 'Ode');
