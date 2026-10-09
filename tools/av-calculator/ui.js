@@ -208,15 +208,13 @@
         <input type="number" min="1" max="60" data-g="showCycles" value="${state.showCycles || 4}"></label>
       <label class="field num"><span class="label-row">Enemies ${infoIcon('How many enemies your attacks hit (AoE / Blast targets). Enemies are only there to take damage: they don\'t attack and aren\'t shown on the timeline.')}</span>
         <input type="number" min="0" max="5" data-g="enemies" value="${state.enemies == null ? 2 : state.enemies}"></label>
-      ${state.breaks ? `<label class="field num"><span class="label-row">Toughness ${infoIcon('Each enemy\'s Toughness (enemies are assumed weak to your team). At 0 they are Weakness Broken: Break DMG, their action is delayed, they take full DMG and Super Break applies until their next turn.')}</span>
-        <input type="number" min="10" max="2000" data-g="enemyToughness" value="${state.enemyToughness || 160}"></label>` : ''}
+      <label class="field num"><span class="label-row">Toughness ${infoIcon('Each enemy\'s Toughness. Enemies are assumed weak to your whole team, so every attack can break them. At 0: Break DMG, then Super Break applies until the enemy recovers on its next turn.')}</span>
+        <input type="number" min="10" max="2000" data-g="enemyToughness" value="${state.enemyToughness || 160}"></label>
 
       <label class="field num"><span>Enemy Lv</span>
         <input type="number" min="1" max="120" data-g="enemyLevel" value="${state.enemyLevel || 95}"></label>
       <label class="field num"><span class="label-row">Enemy RES % ${infoIcon('A standard enemy: the same RES to every damage type (20% is typical). Enemies aren\'t killed, so HP doesn\'t matter.')}</span>
         <input type="number" min="-100" max="100" data-g="enemyRes" value="${state.enemyRes == null ? 20 : state.enemyRes}"></label>
-      <label class="check elation-attacks"><input type="checkbox" data-g="breaks" ${state.breaks ? 'checked' : ''}>
-        Weakness Break ${infoIcon('Off: enemies are never Weakness Broken (no Break / Super Break DMG, no break delays). Turn on for break teams (Firefly, Rappa, Boothill, The Dahlia...).')}</label>
       ${state.slots.some((x) => x && CHARS[x.charId] && CHARS[x.charId].combat.elationPid) ? `
         <label class="check elation-attacks"><input type="checkbox" data-g="elationAttacks" ${state.elationAttacks !== false ? 'checked' : ''}>
           Elation Skills count as attacks ${infoIcon('When on, damaging Elation Skills trigger "after an ally attacks" effects (Robin\'s Energy, Aventurine • Waveflair\'s Fervor, Feixiao\'s Flying Aureus...). The game text doesn\'t say clearly either way.')}</label>` : ''}
@@ -543,7 +541,7 @@
     if (t.dataset.g) {
       const v = t.type === 'number' ? t.value : t.value;
       state[t.dataset.g] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (v === '' ? '' : +v) : v;
-      if (t.dataset.g === 'mode' || t.dataset.g === 'breaks' ) renderModeBar();
+      if (t.dataset.g === 'mode') renderModeBar();
       changed(false);
       return;
     }
@@ -946,7 +944,7 @@
     }).join('');
     const noRelics = r.units.filter(({ unit }) => (!unit.cfg.relicStats || !Object.keys(unit.cfg.relicStats).length) && !(unit.cfg.statTotals && Object.keys(unit.cfg.statTotals).length)).map(({ stats }) => shortName(stats.ch.name));
     return `<div class="section">
-      <div class="section-head"><h2>Damage</h2><span class="muted small">Estimate · ${r.sim.enemyCount} enem${r.sim.enemyCount === 1 ? 'y' : 'ies'}, Lv. ${r.sim.enemyLevel}, ${Math.round(r.sim.enemyRes * 100)}% RES ${infoIcon(DMG_NOTE)}</span></div>
+      <div class="section-head"><h2>Damage</h2><span class="muted small">Estimate · ${r.sim.enemyCount} enem${r.sim.enemyCount === 1 ? 'y' : 'ies'}, Lv. ${r.sim.enemyLevel}, ${Math.round(r.sim.enemyRes * 100)}% RES ${infoIcon(DMG_NOTE)}${r.sim.damageLog.some((d) => /Break/.test(d.label)) ? ` · Break DMG ${infoIcon(BREAK_NOTE)}` : ''}</span></div>
       <div class="card dmg-card">
         <div class="dmg-totals">
           <div><b>${fmtBig(total)}</b><span>Team damage</span></div>
@@ -959,7 +957,8 @@
     </div>`;
   }
   const LABELS = { Basic: 'Basic ATK', Skill: 'Skill', Ult: 'Ultimate', Enhanced: 'Enhanced', FollowUp: 'Follow-up', Summon: 'Summon', Elation: 'Elation Skill', Extra: 'Extra turn', Final: 'Final hit' };
-  const DMG_NOTE = 'Expected damage (average CRIT) from each ability\'s multipliers in the game data, your stats, and the modeled team buffs and enemy debuffs (Robin, Sunday, Bronya, Sparkle, Ruan Mei, Tingyun, Hanya, Pela, Silver Wolf, Jiaoqiu, Tribbie, Cipher, Black Swan, Elation kits and more). DoT ticks on enemy turns. Not included yet: Break / Super Break DMG, most DPS self-buffs, light cone and relic set conditional effects.';
+  const DMG_NOTE = 'Expected damage (average CRIT) from each ability\'s multipliers in the game data, your stats, and the modeled team buffs and enemy debuffs (Robin, Sunday, Bronya, Sparkle, Ruan Mei, Tingyun, Hanya, Pela, Silver Wolf, Jiaoqiu, Tribbie, Cipher, Black Swan, Elation kits and more). DoT ticks on enemy turns. Break DMG and Super Break are included (see the Break note).';
+  const BREAK_NOTE = 'Enemies are assumed weak to your whole team and always have Toughness to break. Toughness DMG adds up per enemy; at 0 the enemy is Weakness Broken and takes Break DMG = level multiplier × element multiplier × (0.5 + Toughness / 40) × (1 + Break Effect) × DEF, RES and vulnerability. Until its next turn it takes full DMG, and Toughness DMG dealt to it becomes Super Break = level multiplier × Toughness reduced / 10 × (1 + Break Effect) × the Super Break multiplier × DEF, RES and vulnerability. Not modeled: break delays and the Energy that break effects give, which depend on enemy SPD, weaknesses and which enemy breaks. Enemies recover at a fixed 120 SPD, so real fights can break more or less often than this.';
 
   function summaryCards(r) {
     return r.units.map(({ unit, stats }) => {

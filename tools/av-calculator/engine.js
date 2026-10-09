@@ -26,8 +26,8 @@
   }
 
   class Sim {
-    constructor({ breaks = false, elationAttacks = true, firstCycle, cycleLen, maxAV, enemies = 1, enemySpd = 120, enemyHits = 1, enemyLevel = 95, enemyRes = 0.2, enemyBroken = false, enemyToughness = 160 }) {
-      this.breaks = breaks; // Weakness Break / Toughness (off unless the team setting turns it on)
+    constructor({ breaks = true, elationAttacks = true, firstCycle, cycleLen, maxAV, enemies = 1, enemySpd = 120, enemyHits = 1, enemyLevel = 95, enemyRes = 0.2, enemyBroken = false, enemyToughness = 160 }) {
+      this.breaks = breaks; // Weakness Break / Toughness: DMG only, no Energy or enemy delays from breaks
       this.enemyToughness = enemyToughness;
       this.elationAttacks = elationAttacks;
       this.enemyLevel = enemyLevel;
@@ -114,7 +114,7 @@
       u.dist = Math.max(0, u.dist - GAUGE * pct);
       if (u.dist <= EPS) this.markImmediate(u);
     }
-    delay(u, pct) { if (u && u.alive) u.dist += GAUGE * pct; }
+    delay(u, pct) { if (u && u.alive && !(this.inBreak && u.kind === 'enemy')) u.dist += GAUGE * pct; }
     actNow(u) {
       if (u && u.advanceTo) u = u.advanceTo;
       if (!u || !u.alive) return;
@@ -215,7 +215,7 @@
     }
     // Returns the Energy actually added. `fixed` gains ignore Energy Regeneration Rate.
     gainEnergy(u, amt, { fixed = false } = {}) {
-      if (!u || !u.alive || u.kind !== 'char' || !(u.maxEnergy > 0) || !amt) return 0;
+      if (!u || !u.alive || u.kind !== 'char' || !(u.maxEnergy > 0) || !amt || this.inBreak) return 0;
       const eff = fixed ? amt : amt * (1 + this.err(u));
       const before = u.energy;
       u.energy = Math.min(u.maxEnergy + (u.energyOverflow || 0), u.energy + eff);
@@ -359,16 +359,17 @@
       }
       return best;
     }
-    // Weakness Break: the enemy's Toughness hit 0. It takes full DMG until its next turn, when it
-    // recovers; its action is delayed 25%.
+    // Weakness Break: the enemy's Toughness hit 0. It takes full DMG (and Super Break) until its
+    // next turn at the fixed enemy SPD, when it recovers. Only the damage is modeled: the break
+    // doesn't delay the enemy or give Energy (`inBreak` mutes both in break-triggered effects).
     breakEnemy(e, by) {
       e.broken = true;
       e.tough = 0;
       e.luster = (this.lusterPct || 0) * this.enemyToughness;
-      this.delay(e, 0.25);
       this.record(e, 'Break', { by: by && by.name });
       if (window.AVDamage) this.addDamage(by, window.AVDamage.breakDamage(this, by), 'Break');
-      this.fireEvery('weaknessBreak', by, e);
+      this.inBreak = true;
+      try { this.fireEvery('weaknessBreak', by, e); } finally { this.inBreak = false; }
     }
     brokenShare() {
       const es = this.enemies();
@@ -618,17 +619,12 @@
       }
 
       if (u.kind === 'enemy') {
-        // About to recover from Weakness Break: kits may extend it (Ruan Mei's Thanatoplum Rebloom
-        // sets `rebloom` to a delay), which pushes the enemy's turn back instead.
+        // About to recover from Weakness Break: recovery effects deal their DMG (Ruan Mei's
+        // Thanatoplum Rebloom), but the break extension isn't modeled, like other break delays.
         if (u.broken) {
-          this.fireEvery('breakRecover', u);
-          if (u.rebloom > 0) {
-            this.record(u, 'Break', { label: 'Break extended' });
-            this.current = null;
-            u.dist = GAUGE * u.rebloom; u.rebloom = 0; u.tb = u.defaultTb;
-            return;
-          }
-          u.rebloomed = false;
+          this.inBreak = true;
+          try { this.fireEvery('breakRecover', u); } finally { this.inBreak = false; }
+          u.rebloom = 0; u.rebloomed = false;
         }
         this.tickBuffs(u, 'start');
         if (u.frozen) {
